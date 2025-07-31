@@ -12,7 +12,7 @@ let billingCharges = [
     amount: 85.00,
     icd10Code: 'Z00.00',
     cptCode: '85025',
-    insuranceId: 1,
+insuranceId: 1,
     tpaId: null,
     status: 'paid',
     insuranceVerified: true,
@@ -25,6 +25,9 @@ let billingCharges = [
     claimSubmittedAt: new Date('2024-01-16'),
     paidAmount: 85.00,
     paidAt: new Date('2024-01-20'),
+    followUpScheduled: false,
+    followUpDate: null,
+    automatedPayment: true,
     createdAt: new Date('2024-01-15'),
     updatedAt: new Date('2024-01-20')
   },
@@ -40,7 +43,7 @@ let billingCharges = [
     cptCode: null,
     insuranceId: 2,
     tpaId: 1,
-    status: 'pending',
+status: 'pending',
     insuranceVerified: true,
     tpaProcessed: false,
     claimSubmitted: true,
@@ -49,6 +52,9 @@ let billingCharges = [
     claimStatusMessage: 'Under review by insurance provider',
     claimStatusUpdatedAt: new Date('2024-01-18'),
     claimSubmittedAt: new Date('2024-01-17'),
+    followUpScheduled: true,
+    followUpDate: new Date('2024-01-23'),
+    automatedPayment: false,
     createdAt: new Date('2024-01-16'),
     updatedAt: new Date('2024-01-18')
   },
@@ -64,7 +70,7 @@ let billingCharges = [
     cptCode: '71020',
     insuranceId: 1,
     tpaId: null,
-    status: 'denied',
+status: 'denied',
     insuranceVerified: true,
     tpaProcessed: false,
     claimSubmitted: true,
@@ -80,6 +86,9 @@ let billingCharges = [
     resubmissionCount: 0,
     maxResubmissions: 2,
     recommendedAction: 'Provide additional medical records and physician notes',
+    followUpScheduled: true,
+    followUpDate: new Date('2024-01-22'),
+    automatedPayment: false,
     createdAt: new Date('2024-01-14'),
     updatedAt: new Date('2024-01-19')
   },
@@ -137,7 +146,7 @@ let billingCharges = [
     cptCode: '80061',
     insuranceId: 1,
     tpaId: null,
-    status: 'denied',
+status: 'denied',
     insuranceVerified: true,
     tpaProcessed: false,
     claimSubmitted: true,
@@ -156,6 +165,9 @@ let billingCharges = [
     appealStatus: 'pending',
     appealSubmittedAt: new Date('2024-01-21'),
     appealLevel: 1,
+    followUpScheduled: true,
+    followUpDate: new Date('2024-01-26'),
+    automatedPayment: false,
     createdAt: new Date('2024-01-16'),
     updatedAt: new Date('2024-01-21')
   }
@@ -506,20 +518,23 @@ simulateClearinghouseProcessing(claimId, chargeId) {
     setTimeout(() => {
       // 70% success rate simulation with various outcomes
       const outcome = Math.random()
-      if (outcome > 0.3) {
+if (outcome > 0.3) {
         this.updateClaimStatus(chargeId, 'accepted', 'Claim accepted by payer')
         
-        // Simulate payment processing
+        // Simulate payment processing with automated posting
         setTimeout(() => {
-          this.updateClaimStatus(chargeId, 'paid', 'Payment processed')
+          this.updateClaimStatus(chargeId, 'paid', 'Payment processed automatically')
           this.update(chargeId, { 
             status: 'paid',
             paidAmount: this.charges.find(c => c.Id === parseInt(chargeId))?.amount,
-            paidAt: new Date()
+            paidAt: new Date(),
+            automatedPayment: true,
+            followUpScheduled: false
           })
+          toast.success('Automated payment posted successfully')
         }, 10000)
       } else if (outcome > 0.15) {
-        // Denial with specific reason codes
+        // Denial with specific reason codes and follow-up scheduling
         const denialReasons = [
           { code: 'D001', text: 'Insufficient documentation provided', category: 'Documentation', action: 'Provide additional medical records and physician notes' },
           { code: 'D002', text: 'Medical necessity not established', category: 'Medical Necessity', action: 'Provide clinical justification and supporting lab values' },
@@ -530,6 +545,11 @@ simulateClearinghouseProcessing(claimId, chargeId) {
         const denial = denialReasons[Math.floor(Math.random() * denialReasons.length)]
         
         this.updateClaimStatus(chargeId, 'denied', `Claim denied - ${denial.text}`)
+        
+        // Schedule follow-up for denied claim
+        const followUpDate = new Date()
+        followUpDate.setDate(followUpDate.getDate() + 3) // 3 days for denied claims
+        
         this.update(chargeId, { 
           status: 'denied',
           denialReason: denial.code,
@@ -538,16 +558,31 @@ simulateClearinghouseProcessing(claimId, chargeId) {
           canResubmit: true,
           resubmissionCount: 0,
           maxResubmissions: 2,
-          recommendedAction: denial.action
+          recommendedAction: denial.action,
+          followUpScheduled: true,
+          followUpDate: followUpDate
         })
+        
+        // Schedule automated follow-up
+        this.scheduleFollowUp(chargeId, 'denied', followUpDate)
+        
       } else {
-        // Technical rejection
+        // Technical rejection with follow-up
         this.updateClaimStatus(chargeId, 'rejected', 'Claim rejected - technical error in submission')
+        
+        const followUpDate = new Date()
+        followUpDate.setDate(followUpDate.getDate() + 1) // 1 day for technical rejections
+        
         this.update(chargeId, { 
           status: 'rejected',
           canResubmit: true,
-          recommendedAction: 'Fix technical issues and resubmit'
+          recommendedAction: 'Fix technical issues and resubmit',
+          followUpScheduled: true,
+          followUpDate: followUpDate
         })
+        
+        // Schedule automated follow-up
+        this.scheduleFollowUp(chargeId, 'rejected', followUpDate)
       }
     }, 8000)
   }
@@ -758,7 +793,111 @@ simulateClearinghouseProcessing(claimId, chargeId) {
     })
   }
 
-  // Generate claims report
+// Schedule automated follow-up for outstanding claims
+  scheduleFollowUp(chargeId, claimStatus, followUpDate) {
+    setTimeout(() => {
+      const charge = this.charges.find(c => c.Id === parseInt(chargeId))
+      if (!charge) return
+
+      // Check if follow-up is still needed
+      if (charge.claimStatus === claimStatus && charge.followUpScheduled) {
+        toast.info(`Follow-up scheduled for claim ${charge.claimId} - ${charge.claimStatusMessage}`)
+        
+        // For processing claims, check if they need escalation
+        if (claimStatus === 'processing') {
+          const daysSinceSubmission = Math.floor((new Date() - new Date(charge.claimSubmittedAt)) / (1000 * 60 * 60 * 24))
+          if (daysSinceSubmission > 7) {
+            toast.warning(`Claim ${charge.claimId} has been processing for ${daysSinceSubmission} days - consider escalation`)
+          }
+        }
+      }
+    }, Math.abs(followUpDate - new Date()))
+  }
+
+  // Process automated payments from insurance and patients
+  processAutomatedPayments() {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const eligibleCharges = this.charges.filter(c => 
+          c.claimStatus === 'accepted' && !c.paidAmount && !c.automatedPayment
+        )
+
+        let processedPayments = 0
+        
+        eligibleCharges.forEach(charge => {
+          // Simulate automated payment posting
+          const paymentSuccess = Math.random() > 0.1 // 90% success rate
+          
+          if (paymentSuccess) {
+            this.update(charge.Id, {
+              status: 'paid',
+              paidAmount: charge.amount,
+              paidAt: new Date(),
+              automatedPayment: true,
+              followUpScheduled: false
+            })
+            
+            this.updateClaimStatus(charge.Id, 'paid', 'Payment posted automatically')
+            processedPayments++
+          }
+        })
+
+        if (processedPayments > 0) {
+          toast.success(`${processedPayments} automated payments processed successfully`)
+        }
+
+        resolve({
+          processed: processedPayments,
+          total: eligibleCharges.length
+        })
+      }, 2000)
+    })
+  }
+
+  // Start automated processing for follow-ups and payments
+  startAutomatedProcessing() {
+    // Process automated payments every 30 seconds
+    setInterval(() => {
+      this.processAutomatedPayments()
+    }, 30000)
+
+    // Check for outstanding claims needing follow-up every minute
+    setInterval(() => {
+      const outstandingClaims = this.charges.filter(c => {
+        if (!c.claimSubmitted || c.claimStatus === 'paid') return false
+        
+        const daysSinceSubmission = Math.floor((new Date() - new Date(c.claimSubmittedAt)) / (1000 * 60 * 60 * 24))
+        const daysSinceLastUpdate = Math.floor((new Date() - new Date(c.claimStatusUpdatedAt)) / (1000 * 60 * 60 * 24))
+        
+        // Schedule follow-up based on claim status and time elapsed
+        if (c.claimStatus === 'processing' && daysSinceSubmission > 5 && !c.followUpScheduled) {
+          return true
+        }
+        if ((c.claimStatus === 'denied' || c.claimStatus === 'rejected') && daysSinceLastUpdate > 2 && !c.followUpScheduled) {
+          return true
+        }
+        
+        return false
+      })
+
+      outstandingClaims.forEach(claim => {
+        const followUpDate = new Date()
+        followUpDate.setDate(followUpDate.getDate() + 1) // Next day follow-up
+        
+        this.update(claim.Id, {
+          followUpScheduled: true,
+          followUpDate: followUpDate
+        })
+        
+        this.scheduleFollowUp(claim.Id, claim.claimStatus, followUpDate)
+      })
+      
+    }, 60000) // Every minute
+
+    toast.info('Automated billing processes started - follow-ups and payment posting enabled')
+  }
+
+  // Generate claims report with automation metrics
   generateClaimsReport(dateFrom, dateTo, filters = {}) {
     return new Promise((resolve) => {
       setTimeout(() => {
@@ -786,22 +925,29 @@ simulateClearinghouseProcessing(claimId, chargeId) {
           claims = claims.filter(c => c.clearinghouseId === filters.clearinghouse)
         }
         
-        // Calculate summary
+        // Calculate summary with automation metrics
         const summary = {
           totalClaims: claims.length,
           submittedClaims: claims.filter(c => c.claimStatus === 'submitted').length,
           processingClaims: claims.filter(c => c.claimStatus === 'processing').length,
           acceptedClaims: claims.filter(c => c.claimStatus === 'accepted').length,
           rejectedClaims: claims.filter(c => c.claimStatus === 'rejected').length,
+          deniedClaims: claims.filter(c => c.claimStatus === 'denied').length,
           paidClaims: claims.filter(c => c.claimStatus === 'paid').length,
           totalClaimAmount: claims.reduce((sum, c) => sum + c.amount, 0),
-          paidAmount: claims.filter(c => c.claimStatus === 'paid').reduce((sum, c) => sum + c.amount, 0)
+          paidAmount: claims.filter(c => c.claimStatus === 'paid').reduce((sum, c) => sum + c.amount, 0),
+          // Automation metrics
+          automatedPayments: claims.filter(c => c.automatedPayment).length,
+          scheduledFollowUps: claims.filter(c => c.followUpScheduled).length,
+          outstandingClaims: claims.filter(c => 
+            c.claimStatus === 'processing' || c.claimStatus === 'submitted'
+          ).length
         }
         
         resolve({
           claims,
           summary
-})
+        })
       }, 500)
     })
   }
