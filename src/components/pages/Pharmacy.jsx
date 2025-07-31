@@ -1579,11 +1579,9 @@ if (loading) return <Loading />
                   </Button>
                 </div>
               </div>
-            </div>
+</div>
           </div>
         )}
-      </div>
-    )}
 
       {/* Reorder Point Modal */}
       {showReorderModal && selectedDrug && (
@@ -1648,9 +1646,9 @@ if (loading) return <Loading />
             </div>
           </div>
         </div>
-)}
+      )}
 
-{/* Enhanced Disposal Modal with Batch Tracking */}
+      {/* Enhanced Disposal Modal with Batch Tracking */}
       {showDisposalModal && selectedDrug && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
@@ -1841,17 +1839,17 @@ if (loading) return <Loading />
                       }`}>
                         {isRecalledBatch(selectedDrug.lotNumber) ? (
                           <>
-                            • FDA notification required within 24 hours
-                            • Patient notification and recall completion required
-                            • Complete batch tracking documentation mandatory
+                            • FDA notification required within 24 hours<br />
+                            • Patient notification and recall completion required<br />
+                            • Complete batch tracking documentation mandatory<br />
                             • Disposal must follow FDA guidelines for recalled products
                           </>
                         ) : (
                           <>
-                            • DEA Form 41 must be completed for controlled substances
-                            • Witness signature required for all disposals
-                            • Documentation must be retained for 2 years
-                            • High-value disposals may require supervisor approval
+                            • DEA Form 41 must be completed for controlled substances<br />
+                            • Witness signature required for all disposals<br />
+                            • Documentation must be retained for 2 years<br />
+                            • High-value disposals may require supervisor approval<br />
                             • Batch tracking information must be recorded
                           </>
                         )}
@@ -1892,9 +1890,8 @@ if (loading) return <Loading />
             </div>
           </div>
         </div>
-    </div>
-)}
-    </div>
+      )}
+</div>
   )
 }
 

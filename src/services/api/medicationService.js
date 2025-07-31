@@ -1,8 +1,6 @@
-import React from "react";
-import Error from "@/components/ui/Error";
 class MedicationService {
   constructor() {
-this.medications = [
+    this.medications = [
       {
         Id: 1,
         patientId: 1,
@@ -1005,9 +1003,7 @@ async dismissAlert(alertId) {
       batch.lotNumber.toLowerCase().includes(lotNumber.toLowerCase())
     )
   }
-}
-
-  // Configuration Management
+// Configuration Management
   async updateInventorySettings(settings) {
     await new Promise(resolve => setTimeout(resolve, 200))
     
