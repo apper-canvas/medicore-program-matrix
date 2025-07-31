@@ -181,7 +181,7 @@ const loadData = async () => {
     );
   };
 
-  const getPriorityBadge = (priority) => {
+const getPriorityBadge = (priority) => {
     const priorityStyles = {
       routine: "bg-gray-100 text-gray-800",
       urgent: "bg-orange-100 text-orange-800",
@@ -190,11 +190,11 @@ const loadData = async () => {
 
     return (
       <span className={`px-2 py-1 rounded-full text-xs font-medium ${priorityStyles[priority] || priorityStyles.routine}`}>
-return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${priorityStyles[priority] || priorityStyles.routine}`}>
         {priority?.charAt(0).toUpperCase() + priority?.slice(1) || 'Routine'}
       </span>
     );
+  };
+
   // DICOM Viewer Functions - All hooks must be called before any early returns
   const openViewer = useCallback(async (orderId) => {
     try {
