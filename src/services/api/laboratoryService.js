@@ -213,8 +213,9 @@ const labOrders = [];
 
 class LaboratoryService {
   constructor() {
-    this.tests = [...labTestCatalog];
+this.tests = [...labTestCatalog];
     this.orders = [...labOrders];
+    this.processingQueue = [];
   }
 
   // Test Catalog Methods
@@ -286,6 +287,9 @@ async createOrder(orderData) {
     // Calculate consolidated requirements
     const requirements = this.calculateRequirements(testsWithDetails);
     
+    // Calculate estimated processing time
+    const estimatedProcessingTime = this.calculateProcessingTime(testsWithDetails, orderData.priority);
+    
     const newOrder = {
       ...orderData,
       Id: maxId + 1,
@@ -295,10 +299,13 @@ async createOrder(orderData) {
       status: "Pending",
       orderDate: new Date().toISOString(),
       collectionStatus: "Pending",
-      resultsStatus: "Pending"
+      resultsStatus: "Pending",
+      estimatedProcessingTime,
+      queuePosition: null
     };
     
     this.orders.push(newOrder);
+    this.updateProcessingQueue();
     return { ...newOrder };
   }
 
@@ -447,7 +454,7 @@ async createOrder(orderData) {
     return { ...deletedOrder };
   }
 
-  // Helper Methods
+// Helper Methods
   calculateRequirements(tests) {
     const specimens = new Set();
     const fastingRequired = tests.some(test => test.fastingRequired);
@@ -470,6 +477,88 @@ async createOrder(orderData) {
       specialInstructions: instructions,
       totalTests: tests.length
     };
+  }
+
+  calculateProcessingTime(tests, priority) {
+    // Base processing time from test turnaround times
+    const baseTime = Math.max(...tests.map(test => {
+      const turnaround = test.turnaroundTime || "2-4 hours";
+      const hours = parseInt(turnaround.split('-')[1] || turnaround.split(' ')[0]);
+      return hours;
+    }));
+
+    // Priority multipliers
+    const priorityMultipliers = {
+      'STAT': 0.25,    // 15 minutes for STAT
+      'Urgent': 0.5,   // 30 minutes for Urgent  
+      'Routine': 1.0   // Full time for Routine
+    };
+
+    return Math.ceil(baseTime * (priorityMultipliers[priority] || 1.0));
+  }
+
+  updateProcessingQueue() {
+    // Get orders ready for processing
+    const readyOrders = this.orders.filter(order => 
+      order.collectionStatus === "Received" || order.collectionStatus === "Processing"
+    );
+
+    // Sort by priority and processing time
+    this.processingQueue = readyOrders.sort((a, b) => {
+      // Priority weights (lower number = higher priority)
+      const priorityWeights = { 'STAT': 1, 'Urgent': 2, 'Routine': 3 };
+      
+      const aPriority = priorityWeights[a.priority] || 3;
+      const bPriority = priorityWeights[b.priority] || 3;
+      
+      // First sort by priority
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority;
+      }
+      
+      // Then by processing time (shorter first within same priority)
+      const aTime = a.estimatedProcessingTime || 999;
+      const bTime = b.estimatedProcessingTime || 999;
+      
+      if (aTime !== bTime) {
+        return aTime - bTime;
+      }
+      
+      // Finally by order date (older first)
+      return new Date(a.orderDate) - new Date(b.orderDate);
+    });
+
+    // Update queue positions
+    this.processingQueue.forEach((order, index) => {
+      const originalOrder = this.orders.find(o => o.Id === order.Id);
+      if (originalOrder) {
+        originalOrder.queuePosition = index + 1;
+      }
+    });
+  }
+
+  async getProcessingQueue() {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    this.updateProcessingQueue();
+    return [...this.processingQueue];
+  }
+
+  getQueueStatistics() {
+    const queue = this.processingQueue;
+    const stats = {
+      total: queue.length,
+      stat: queue.filter(o => o.priority === 'STAT').length,
+      urgent: queue.filter(o => o.priority === 'Urgent').length,
+      routine: queue.filter(o => o.priority === 'Routine').length,
+      averageWaitTime: 0
+    };
+
+    if (queue.length > 0) {
+      const totalTime = queue.reduce((sum, order) => sum + (order.estimatedProcessingTime || 0), 0);
+      stats.averageWaitTime = Math.ceil(totalTime / queue.length);
+    }
+
+    return stats;
   }
 
   getPriorityLevels() {

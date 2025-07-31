@@ -34,6 +34,9 @@ const [rejectionReason, setRejectionReason] = useState("")
     collectionTime: "",
     notes: ""
   })
+  // Processing queue state
+  const [processingQueue, setProcessingQueue] = useState([])
+  const [queueStats, setQueueStats] = useState({})
 
 const tabs = [
     { id: "collection", label: "Sample Collection", icon: "TestTube" },
@@ -214,12 +217,33 @@ const getStatusColor = (status) => {
     }
   }
 
-  const getPriorityColor = (priority) => {
+const getPriorityColor = (priority) => {
     switch (priority) {
       case "STAT": return "error"
       case "Urgent": return "warning"
       case "Routine": return "success"
       default: return "default"
+    }
+  }
+
+  const getPriorityIcon = (priority) => {
+    switch (priority) {
+      case "STAT": return "Zap"
+      case "Urgent": return "AlertTriangle"
+      case "Routine": return "Clock"
+      default: return "Clock"
+    }
+  }
+
+  const loadProcessingQueue = async () => {
+    try {
+      const queue = await laboratoryService.getProcessingQueue()
+      const stats = laboratoryService.getQueueStatistics()
+      setProcessingQueue(queue)
+      setQueueStats(stats)
+    } catch (error) {
+      console.error('Error loading processing queue:', error)
+      toast.error('Failed to load processing queue')
     }
   }
 
@@ -498,39 +522,158 @@ const getStatusColor = (status) => {
       )}
 
       {/* Lab Processing Tab */}
-      {activeTab === "processing" && (
+{activeTab === "processing" && (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">Lab Processing</h2>
+            <h2 className="text-xl font-semibold text-gray-900">Lab Processing Queue</h2>
+            <Button onClick={loadProcessingQueue} variant="secondary">
+              <ApperIcon name="RefreshCw" size={16} />
+              Refresh Queue
+            </Button>
+          </div>
+
+          {/* Queue Statistics */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-100 rounded-lg">
+                  <ApperIcon name="Zap" size={20} className="text-red-600" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-red-600">{queueStats.stat || 0}</div>
+                  <div className="text-sm text-gray-600">STAT Tests</div>
+                </div>
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-yellow-100 rounded-lg">
+                  <ApperIcon name="AlertTriangle" size={20} className="text-yellow-600" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-yellow-600">{queueStats.urgent || 0}</div>
+                  <div className="text-sm text-gray-600">Urgent Tests</div>
+                </div>
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <ApperIcon name="Clock" size={20} className="text-green-600" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-green-600">{queueStats.routine || 0}</div>
+                  <div className="text-sm text-gray-600">Routine Tests</div>
+                </div>
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <ApperIcon name="Timer" size={20} className="text-blue-600" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-blue-600">{queueStats.averageWaitTime || 0}h</div>
+                  <div className="text-sm text-gray-600">Avg. Processing</div>
+                </div>
+              </div>
+            </Card>
           </div>
           
-          <Card>
-            <h3 className="text-lg font-semibold mb-4">Specimens Ready for Processing</h3>
-            <div className="space-y-4">
-              {orders.filter(o => o.collectionStatus === "Received").map(order => {
-                const patient = patients.find(p => p.Id === order.patientId)
-                return (
-                  <div key={order.Id} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-medium">
-                          Order #{order.Id} - {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
+<Card>
+            <h3 className="text-lg font-semibold mb-4">Processing Queue - Organized by Urgency & Time</h3>
+            
+            {processingQueue.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <ApperIcon name="TestTube" size={48} className="mx-auto mb-4 opacity-50" />
+                <p>No tests in processing queue</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {processingQueue.map((order, index) => {
+                  const patient = patients.find(p => p.Id === order.patientId)
+                  const isProcessing = order.collectionStatus === "Processing"
+                  
+                  return (
+                    <div 
+                      key={order.Id} 
+                      className={`border rounded-lg p-4 transition-all duration-200 ${
+                        order.priority === 'STAT' ? 'border-red-200 bg-red-50' :
+                        order.priority === 'Urgent' ? 'border-yellow-200 bg-yellow-50' :
+                        'border-green-200 bg-green-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className="flex items-center gap-2">
+                              <Badge variant={getPriorityColor(order.priority)}>
+                                <ApperIcon name={getPriorityIcon(order.priority)} size={12} />
+                                {order.priority}
+                              </Badge>
+                              <span className="text-sm text-gray-500">#{order.queuePosition || index + 1}</span>
+                            </div>
+                            <div className="text-sm text-gray-600">
+                              Est. {order.estimatedProcessingTime || 'N/A'}h processing
+                            </div>
+                          </div>
+                          
+                          <div className="font-medium mb-1">
+                            Order #{order.Id} - {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
+                          </div>
+                          
+                          <div className="text-sm text-gray-600 mb-2">
+                            Tests: {order.tests?.map(t => t.name).join(", ")}
+                          </div>
+                          
+                          <div className="flex items-center gap-4 text-xs text-gray-500">
+                            <span>Ordered: {new Date(order.orderDate).toLocaleDateString()}</span>
+                            {order.collectionTime && (
+                              <span>Collected: {new Date(order.collectionTime).toLocaleTimeString()}</span>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-sm text-gray-600">
-                          Tests: {order.tests?.map(t => t.name).join(", ")}
+                        
+                        <div className="flex items-center gap-2">
+                          {isProcessing ? (
+                            <div className="flex items-center gap-2">
+                              <Badge variant="in-progress">
+                                <ApperIcon name="Activity" size={12} />
+                                Processing
+                              </Badge>
+                              <Button 
+                                onClick={() => handleUpdateStatus(order.Id, "Completed")}
+                                variant="success"
+                                size="sm"
+                              >
+                                Complete
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button 
+                              onClick={() => {
+                                handleUpdateStatus(order.Id, "Processing")
+                                loadProcessingQueue()
+                              }}
+                              variant="primary"
+                              size="sm"
+                              className={
+                                order.priority === 'STAT' ? 'bg-red-600 hover:bg-red-700' :
+                                order.priority === 'Urgent' ? 'bg-yellow-600 hover:bg-yellow-700' :
+                                'bg-green-600 hover:bg-green-700'
+                              }
+                            >
+                              <ApperIcon name="Play" size={12} />
+                              Start Processing
+                            </Button>
+                          )}
                         </div>
                       </div>
-                      <Button 
-                        onClick={() => handleUpdateStatus(order.Id, "Processing")}
-                        variant="primary"
-                      >
-                        Start Processing
-                      </Button>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
+                  )
+                })}
+              </div>
+            )}
           </Card>
         </div>
       )}
@@ -543,9 +686,9 @@ const getStatusColor = (status) => {
           </div>
           
           <Card>
-            <h3 className="text-lg font-semibold mb-4">Processing Queue</h3>
+            <h3 className="text-lg font-semibold mb-4">Completed Tests</h3>
             <div className="space-y-4">
-              {orders.filter(o => o.collectionStatus === "Processing").map(order => {
+              {orders.filter(o => o.collectionStatus === "Completed").map(order => {
                 const patient = patients.find(p => p.Id === order.patientId)
                 return (
                   <div key={order.Id} className="border rounded-lg p-4">
@@ -557,13 +700,23 @@ const getStatusColor = (status) => {
                         <div className="text-sm text-gray-600">
                           Tests: {order.tests?.map(t => t.name).join(", ")}
                         </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant={getPriorityColor(order.priority)}>
+                            {order.priority}
+                          </Badge>
+                          <Badge variant="success">Completed</Badge>
+                        </div>
                       </div>
-                      <Button 
-                        onClick={() => handleUpdateStatus(order.Id, "Completed")}
-                        variant="success"
-                      >
-                        Complete Results
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button variant="secondary" size="sm">
+                          <ApperIcon name="FileText" size={14} />
+                          View Results
+                        </Button>
+                        <Button variant="primary" size="sm">
+                          <ApperIcon name="Send" size={14} />
+                          Send Report
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )
