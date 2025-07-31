@@ -14,11 +14,19 @@ let billingCharges = [
     cptCode: '85025',
     insuranceId: 1,
     tpaId: null,
-    status: 'pending',
-    insuranceVerified: false,
+    status: 'paid',
+    insuranceVerified: true,
     tpaProcessed: false,
+    claimSubmitted: true,
+    claimId: 'CLM001',
+    claimStatus: 'paid',
+    claimStatusMessage: 'Payment processed successfully',
+    claimStatusUpdatedAt: new Date('2024-01-20'),
+    claimSubmittedAt: new Date('2024-01-16'),
+    paidAmount: 85.00,
+    paidAt: new Date('2024-01-20'),
     createdAt: new Date('2024-01-15'),
-    updatedAt: new Date('2024-01-15')
+    updatedAt: new Date('2024-01-20')
   },
   {
     Id: 2,
@@ -35,8 +43,14 @@ let billingCharges = [
     status: 'pending',
     insuranceVerified: true,
     tpaProcessed: false,
+    claimSubmitted: true,
+    claimId: 'CLM002',
+    claimStatus: 'processing',
+    claimStatusMessage: 'Under review by insurance provider',
+    claimStatusUpdatedAt: new Date('2024-01-18'),
+    claimSubmittedAt: new Date('2024-01-17'),
     createdAt: new Date('2024-01-16'),
-    updatedAt: new Date('2024-01-16')
+    updatedAt: new Date('2024-01-18')
   },
   {
     Id: 3,
@@ -50,11 +64,24 @@ let billingCharges = [
     cptCode: '71020',
     insuranceId: 1,
     tpaId: null,
-    status: 'paid',
+    status: 'denied',
     insuranceVerified: true,
     tpaProcessed: false,
+    claimSubmitted: true,
+    claimId: 'CLM003',
+    claimStatus: 'denied',
+    claimStatusMessage: 'Claim denied - insufficient documentation',
+    claimStatusUpdatedAt: new Date('2024-01-19'),
+    claimSubmittedAt: new Date('2024-01-15'),
+    denialReason: 'D001',
+    denialReasonText: 'Insufficient documentation provided',
+    denialCategory: 'Documentation',
+    canResubmit: true,
+    resubmissionCount: 0,
+    maxResubmissions: 2,
+    recommendedAction: 'Provide additional medical records and physician notes',
     createdAt: new Date('2024-01-14'),
-    updatedAt: new Date('2024-01-17')
+    updatedAt: new Date('2024-01-19')
   },
   {
     Id: 4,
@@ -71,8 +98,14 @@ let billingCharges = [
     status: 'pending',
     insuranceVerified: true,
     tpaProcessed: true,
+    claimSubmitted: true,
+    claimId: 'CLM004',
+    claimStatus: 'submitted',
+    claimStatusMessage: 'Claim submitted to clearinghouse',
+    claimStatusUpdatedAt: new Date('2024-01-18'),
+    claimSubmittedAt: new Date('2024-01-18'),
     createdAt: new Date('2024-01-17'),
-    updatedAt: new Date('2024-01-17')
+    updatedAt: new Date('2024-01-18')
   },
   {
     Id: 5,
@@ -91,6 +124,40 @@ let billingCharges = [
     tpaProcessed: false,
     createdAt: new Date('2024-01-18'),
     updatedAt: new Date('2024-01-18')
+  },
+  {
+    Id: 6,
+    patientId: 'P006',
+    patientName: 'Lisa Anderson',
+    department: 'Laboratory',
+    serviceCode: 'LAB002',
+    description: 'Lipid Panel',
+    amount: 95.00,
+    icd10Code: 'Z00.01',
+    cptCode: '80061',
+    insuranceId: 1,
+    tpaId: null,
+    status: 'denied',
+    insuranceVerified: true,
+    tpaProcessed: false,
+    claimSubmitted: true,
+    claimId: 'CLM005',
+    claimStatus: 'denied',
+    claimStatusMessage: 'Claim denied - medical necessity not established',
+    claimStatusUpdatedAt: new Date('2024-01-20'),
+    claimSubmittedAt: new Date('2024-01-17'),
+    denialReason: 'D002',
+    denialReasonText: 'Medical necessity not established',
+    denialCategory: 'Medical Necessity',
+    canResubmit: true,
+    resubmissionCount: 1,
+    maxResubmissions: 2,
+    recommendedAction: 'Provide clinical justification and supporting lab values',
+    appealStatus: 'pending',
+    appealSubmittedAt: new Date('2024-01-21'),
+    appealLevel: 1,
+    createdAt: new Date('2024-01-16'),
+    updatedAt: new Date('2024-01-21')
   }
 ]
 
@@ -426,7 +493,7 @@ class BillingService {
   }
 
   // Simulate real-time clearinghouse processing
-  simulateClearinghouseProcessing(claimId, chargeId) {
+simulateClearinghouseProcessing(claimId, chargeId) {
     // Simulate processing stages with realistic timing
     setTimeout(() => {
       this.updateClaimStatus(chargeId, 'processing', 'Claim received by clearinghouse')
@@ -437,23 +504,55 @@ class BillingService {
     }, 5000)
     
     setTimeout(() => {
-      // 85% success rate simulation
-      const isAccepted = Math.random() > 0.15
-      if (isAccepted) {
+      // 70% success rate simulation with various outcomes
+      const outcome = Math.random()
+      if (outcome > 0.3) {
         this.updateClaimStatus(chargeId, 'accepted', 'Claim accepted by payer')
         
         // Simulate payment processing
         setTimeout(() => {
           this.updateClaimStatus(chargeId, 'paid', 'Payment processed')
-          this.update(chargeId, { status: 'paid' })
+          this.update(chargeId, { 
+            status: 'paid',
+            paidAmount: this.charges.find(c => c.Id === parseInt(chargeId))?.amount,
+            paidAt: new Date()
+          })
         }, 10000)
+      } else if (outcome > 0.15) {
+        // Denial with specific reason codes
+        const denialReasons = [
+          { code: 'D001', text: 'Insufficient documentation provided', category: 'Documentation', action: 'Provide additional medical records and physician notes' },
+          { code: 'D002', text: 'Medical necessity not established', category: 'Medical Necessity', action: 'Provide clinical justification and supporting lab values' },
+          { code: 'D003', text: 'Duplicate claim submission', category: 'Administrative', action: 'Verify claim uniqueness and resubmit if valid' },
+          { code: 'D004', text: 'Incorrect coding used', category: 'Coding', action: 'Review and correct ICD-10/CPT codes' },
+          { code: 'D005', text: 'Coverage limitation exceeded', category: 'Coverage', action: 'Check benefit limits and patient responsibility' }
+        ]
+        const denial = denialReasons[Math.floor(Math.random() * denialReasons.length)]
+        
+        this.updateClaimStatus(chargeId, 'denied', `Claim denied - ${denial.text}`)
+        this.update(chargeId, { 
+          status: 'denied',
+          denialReason: denial.code,
+          denialReasonText: denial.text,
+          denialCategory: denial.category,
+          canResubmit: true,
+          resubmissionCount: 0,
+          maxResubmissions: 2,
+          recommendedAction: denial.action
+        })
       } else {
-        this.updateClaimStatus(chargeId, 'rejected', 'Claim rejected - missing documentation')
+        // Technical rejection
+        this.updateClaimStatus(chargeId, 'rejected', 'Claim rejected - technical error in submission')
+        this.update(chargeId, { 
+          status: 'rejected',
+          canResubmit: true,
+          recommendedAction: 'Fix technical issues and resubmit'
+        })
       }
     }, 8000)
   }
 
-  // Update claim status
+// Update claim status
   updateClaimStatus(chargeId, status, message = '') {
     return new Promise((resolve) => {
       setTimeout(() => {
@@ -470,6 +569,146 @@ class BillingService {
         }
       }, 100)
     })
+  }
+
+  // Resubmit denied claim
+  resubmitClaim(chargeId, correctionNotes = '') {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const index = this.charges.findIndex(c => c.Id === parseInt(chargeId))
+        if (index !== -1) {
+          const charge = this.charges[index]
+          if (charge.canResubmit && charge.resubmissionCount < charge.maxResubmissions) {
+            const newClaimId = `CLM${String(Date.now()).slice(-6)}`
+            this.charges[index] = {
+              ...charge,
+              claimId: newClaimId,
+              claimStatus: 'submitted',
+              claimStatusMessage: 'Claim resubmitted with corrections',
+              claimStatusUpdatedAt: new Date(),
+              claimSubmittedAt: new Date(),
+              resubmissionCount: (charge.resubmissionCount || 0) + 1,
+              correctionNotes: correctionNotes,
+              status: 'pending',
+              updatedAt: new Date()
+            }
+            
+            // Simulate reprocessing
+            this.simulateClearinghouseProcessing(newClaimId, chargeId)
+            
+            resolve({
+              success: true,
+              claimId: newClaimId,
+              message: `Claim resubmitted as ${newClaimId}`,
+              charge: {...this.charges[index]}
+            })
+          } else {
+            resolve({
+              success: false,
+              message: 'Claim cannot be resubmitted or maximum attempts reached'
+            })
+          }
+        } else {
+          resolve({
+            success: false,
+            message: 'Charge not found'
+          })
+        }
+      }, 500)
+    })
+  }
+
+  // Submit appeal for denied claim
+  submitAppeal(chargeId, appealNotes = '', appealLevel = 1) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const index = this.charges.findIndex(c => c.Id === parseInt(chargeId))
+        if (index !== -1) {
+          const charge = this.charges[index]
+          if (charge.status === 'denied' && appealLevel <= 3) {
+            this.charges[index] = {
+              ...charge,
+              appealStatus: 'submitted',
+              appealSubmittedAt: new Date(),
+              appealLevel: appealLevel,
+              appealNotes: appealNotes,
+              updatedAt: new Date()
+            }
+            
+            // Simulate appeal processing (30% success rate)
+            setTimeout(() => {
+              const appealSuccess = Math.random() > 0.7
+              if (appealSuccess) {
+                this.charges[index] = {
+                  ...this.charges[index],
+                  appealStatus: 'approved',
+                  status: 'paid',
+                  paidAmount: charge.amount,
+                  paidAt: new Date(),
+                  claimStatus: 'paid',
+                  claimStatusMessage: 'Claim approved on appeal'
+                }
+                toast.success(`Appeal approved for claim ${charge.claimId}`)
+              } else {
+                this.charges[index] = {
+                  ...this.charges[index],
+                  appealStatus: 'denied',
+                  claimStatusMessage: 'Appeal denied - original decision upheld'
+                }
+                toast.error(`Appeal denied for claim ${charge.claimId}`)
+              }
+            }, 15000)
+            
+            resolve({
+              success: true,
+              message: `Appeal submitted for claim ${charge.claimId}`,
+              charge: {...this.charges[index]}
+            })
+          } else {
+            resolve({
+              success: false,
+              message: 'Cannot submit appeal for this claim'
+            })
+          }
+        }
+      }, 500)
+    })
+  }
+
+  // Get claims by status
+  getClaimsByStatus(status) {
+    return this.charges.filter(charge => charge.claimStatus === status)
+  }
+
+  // Get denial analytics
+  getDenialAnalytics() {
+    const deniedClaims = this.charges.filter(c => c.status === 'denied')
+    const analytics = {
+      totalDenials: deniedClaims.length,
+      denialsByCategory: {},
+      denialsByReason: {},
+      resubmissionRate: 0,
+      appealRate: 0
+    }
+    
+    deniedClaims.forEach(claim => {
+      if (claim.denialCategory) {
+        analytics.denialsByCategory[claim.denialCategory] = 
+          (analytics.denialsByCategory[claim.denialCategory] || 0) + 1
+      }
+      if (claim.denialReason) {
+        analytics.denialsByReason[claim.denialReason] = 
+          (analytics.denialsByReason[claim.denialReason] || 0) + 1
+      }
+    })
+    
+    const resubmitted = deniedClaims.filter(c => c.resubmissionCount > 0).length
+    const appealed = deniedClaims.filter(c => c.appealStatus).length
+    
+    analytics.resubmissionRate = deniedClaims.length ? (resubmitted / deniedClaims.length * 100).toFixed(1) : 0
+    analytics.appealRate = deniedClaims.length ? (appealed / deniedClaims.length * 100).toFixed(1) : 0
+    
+    return analytics
   }
 
   // Get claims by status
@@ -562,7 +801,7 @@ class BillingService {
         resolve({
           claims,
           summary
-        })
+})
       }, 500)
     })
   }
