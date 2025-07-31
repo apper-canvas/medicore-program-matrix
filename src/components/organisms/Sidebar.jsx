@@ -4,10 +4,11 @@ import NavItem from "@/components/molecules/NavItem"
 import { cn } from "@/utils/cn"
 
 const Sidebar = ({ isOpen, onClose }) => {
-  const navigation = [
+const navigation = [
     { name: "Dashboard", href: "/", icon: "LayoutDashboard" },
     { name: "Patients", href: "/patients", icon: "Users" },
     { name: "Appointments", href: "/appointments", icon: "Calendar", badge: "12" },
+    { name: "Doctor Schedules", href: "/doctor-schedules", icon: "CalendarDays" },
     { name: "Clinical", href: "/clinical", icon: "Stethoscope" },
     { name: "Laboratory", href: "/laboratory", icon: "TestTube", badge: "5" },
     { name: "Pharmacy", href: "/pharmacy", icon: "Pill" },
