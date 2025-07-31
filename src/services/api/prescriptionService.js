@@ -448,7 +448,7 @@ class PrescriptionService {
     return await this.update(prescriptionId, { adherenceScore: score })
   }
 
-  async getAdherenceReport(patientId) {
+async getAdherenceReport(patientId) {
     await new Promise(resolve => setTimeout(resolve, 300))
     
     const patientPrescriptions = await this.getByPatient(patientId)
@@ -459,7 +459,8 @@ class PrescriptionService {
         medications: p.medications.map(m => m.drugName).join(', '),
         adherenceScore: p.adherenceScore,
         status: p.status,
-        lastUpdated: p.counseledDate || p.dispensedDate
+        lastUpdated: p.counseledDate || p.dispensedDate,
+        patientName: p.patientName
       }))
 
     const averageAdherence = adherenceData.length > 0 
@@ -471,6 +472,45 @@ class PrescriptionService {
       averageAdherence,
       prescriptions: adherenceData,
       recommendations: this.generateAdherenceRecommendations(averageAdherence)
+    }
+  }
+
+  async getAdherenceOverview() {
+    await new Promise(resolve => setTimeout(resolve, 200))
+    
+    const allPrescriptions = await this.getAll()
+    const patientsWithAdherence = allPrescriptions
+      .filter(p => p.adherenceScore !== null)
+      .reduce((acc, p) => {
+        if (!acc[p.patientId]) {
+          acc[p.patientId] = {
+            patientId: p.patientId,
+            patientName: p.patientName,
+            prescriptions: []
+          }
+        }
+        acc[p.patientId].prescriptions.push({
+          prescriptionNumber: p.prescriptionNumber,
+          adherenceScore: p.adherenceScore
+        })
+        return acc
+      }, {})
+
+    const adherenceStats = Object.values(patientsWithAdherence).map(patient => {
+      const avgScore = patient.prescriptions.reduce((sum, p) => sum + p.adherenceScore, 0) / patient.prescriptions.length
+      return {
+        ...patient,
+        averageAdherence: Math.round(avgScore),
+        riskLevel: avgScore >= 80 ? 'Low' : avgScore >= 70 ? 'Medium' : 'High'
+      }
+    })
+
+    return {
+      totalPatients: adherenceStats.length,
+      highRisk: adherenceStats.filter(p => p.riskLevel === 'High').length,
+      mediumRisk: adherenceStats.filter(p => p.riskLevel === 'Medium').length,
+      lowRisk: adherenceStats.filter(p => p.riskLevel === 'Low').length,
+      patients: adherenceStats.sort((a, b) => a.averageAdherence - b.averageAdherence)
     }
   }
 

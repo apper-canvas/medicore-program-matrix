@@ -24,8 +24,13 @@ const [activeTab, setActiveTab] = useState("queue")
   const [error, setError] = useState(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedPrescription, setSelectedPrescription] = useState(null)
-  const [workflowStats, setWorkflowStats] = useState(null)
+const [workflowStats, setWorkflowStats] = useState(null)
   
+  // Adherence reporting states
+  const [adherenceOverview, setAdherenceOverview] = useState(null)
+  const [selectedPatientForAdherence, setSelectedPatientForAdherence] = useState(null)
+  const [adherenceReport, setAdherenceReport] = useState(null)
+  const [adherenceSearchTerm, setAdherenceSearchTerm] = useState("")
   // Inventory states
   const [inventory, setInventory] = useState([])
   const [inventoryStats, setInventoryStats] = useState(null)
@@ -88,13 +93,73 @@ useEffect(() => {
     filterPrescriptions()
   }, [prescriptions, searchTerm, activeTab])
 
-  useEffect(() => {
+useEffect(() => {
     if (activeTab === "inventory") {
-loadInventory()
+      loadInventory()
       loadRecalls()
       loadBatchTracker()
+    } else if (activeTab === "adherence") {
+      loadAdherenceOverview()
     }
   }, [activeTab])
+
+  const loadAdherenceOverview = async () => {
+    try {
+      setLoading(true)
+      const overview = await prescriptionService.getAdherenceOverview()
+      setAdherenceOverview(overview)
+    } catch (err) {
+      setError(err.message)
+      toast.error("Failed to load adherence data")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadPatientAdherenceReport = async (patientId) => {
+    try {
+      setLoading(true)
+      const report = await prescriptionService.getAdherenceReport(patientId)
+      setAdherenceReport(report)
+      setSelectedPatientForAdherence(patientId)
+    } catch (err) {
+      toast.error("Failed to load patient adherence report")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const getAdherenceColor = (score) => {
+    if (score >= 90) return "success"
+    if (score >= 80) return "info" 
+    if (score >= 70) return "warning"
+    return "error"
+  }
+
+  const getRiskLevelColor = (riskLevel) => {
+    switch (riskLevel) {
+      case "Low": return "success"
+      case "Medium": return "warning"
+      case "High": return "error"
+      default: return "default"
+    }
+  }
+
+  const filterAdherencePatients = () => {
+    if (!adherenceOverview) return []
+    
+    let filtered = adherenceOverview.patients
+    
+    if (adherenceSearchTerm) {
+      const search = adherenceSearchTerm.toLowerCase()
+      filtered = filtered.filter(patient =>
+        patient.patientName.toLowerCase().includes(search) ||
+        patient.riskLevel.toLowerCase().includes(search)
+      )
+    }
+    
+    return filtered
+  }
   const loadPrescriptions = async () => {
     try {
       setLoading(true)
@@ -492,7 +557,8 @@ const tabs = [
     { id: "dispensing", name: "Dispensing", icon: "Package", count: prescriptions.filter(p => p.status === "Verified").length },
     { id: "counseling", name: "Patient Counseling", icon: "MessageSquare", count: prescriptions.filter(p => p.status === "Dispensed").length },
     { id: "inventory", name: "Drug Inventory", icon: "Database", count: inventory.filter(item => item.currentStock <= item.reorderPoint).length },
-    { id: "batch_tracking", name: "Batch Tracking", icon: "Package2", count: recalls.filter(r => r.status === "active").length }
+    { id: "batch_tracking", name: "Batch Tracking", icon: "Package2", count: recalls.filter(r => r.status === "active").length },
+    { id: "adherence", name: "Adherence Reports", icon: "BarChart3", count: adherenceOverview?.highRisk || 0 }
   ]
 
 if (loading) return <Loading />
@@ -566,6 +632,33 @@ if (loading) return <Loading />
               color="info"
             />
           </div>
+        ) : activeTab === "adherence" && adherenceOverview ? (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <MetricCard
+              title="Total Patients"
+              value={adherenceOverview.totalPatients}
+              icon="Users"
+              color="primary"
+            />
+            <MetricCard
+              title="High Risk"
+              value={adherenceOverview.highRisk}
+              icon="AlertTriangle"
+              color="error"
+            />
+            <MetricCard
+              title="Medium Risk"
+              value={adherenceOverview.mediumRisk}
+              icon="AlertCircle"
+              color="warning"
+            />
+            <MetricCard
+              title="Low Risk"
+              value={adherenceOverview.lowRisk}
+              icon="CheckCircle"
+              color="success"
+            />
+          </div>
         ) : workflowStats && (
           <div className="flex space-x-4">
             <div className="text-center">
@@ -609,8 +702,243 @@ if (loading) return <Loading />
         </nav>
       </div>
 
-      {/* Search */}
-{activeTab === "inventory" ? (
+{/* Search */}
+      {activeTab === "adherence" ? (
+        <>
+          <SearchBar
+            value={adherenceSearchTerm}
+            onChange={setAdherenceSearchTerm}
+            placeholder="Search patients by name or risk level..."
+            className="max-w-md"
+          />
+
+          {/* Adherence Content */}
+          {!adherenceOverview ? (
+            <Loading />
+          ) : selectedPatientForAdherence && adherenceReport ? (
+            <div className="space-y-6">
+              {/* Back Button */}
+              <Button
+                onClick={() => {
+                  setSelectedPatientForAdherence(null)
+                  setAdherenceReport(null)
+                }}
+                variant="secondary"
+                size="sm"
+              >
+                <ApperIcon name="ArrowLeft" size={16} className="mr-2" />
+                Back to Patient List
+              </Button>
+
+              {/* Patient Adherence Report */}
+              <Card className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-semibold">Medication Adherence Report</h3>
+                  <Badge variant={getAdherenceColor(adherenceReport.averageAdherence)} className="text-lg px-3 py-1">
+                    {Math.round(adherenceReport.averageAdherence)}% Average Adherence
+                  </Badge>
+                </div>
+
+                {/* Adherence Overview */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                  <h4 className="font-medium text-blue-800 mb-2">
+                    <ApperIcon name="TrendingUp" size={16} className="inline mr-2" />
+                    Adherence Summary
+                  </h4>
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <span className="text-blue-600">Total Prescriptions:</span>
+                      <div className="font-medium">{adherenceReport.prescriptions.length}</div>
+                    </div>
+                    <div>
+                      <span className="text-blue-600">Average Score:</span>
+                      <div className="font-medium">{Math.round(adherenceReport.averageAdherence)}%</div>
+                    </div>
+                    <div>
+                      <span className="text-blue-600">Risk Level:</span>
+                      <div className="font-medium">
+                        {adherenceReport.averageAdherence >= 80 ? 'Low Risk' : 
+                         adherenceReport.averageAdherence >= 70 ? 'Medium Risk' : 'High Risk'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Individual Prescriptions */}
+                <div className="space-y-4 mb-6">
+                  <h4 className="font-medium">Individual Prescription Adherence</h4>
+                  {adherenceReport.prescriptions.map((prescription, index) => (
+                    <div key={index} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <div className="font-medium">{prescription.prescriptionNumber}</div>
+                          <div className="text-sm text-gray-600">{prescription.medications}</div>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <Badge variant={getAdherenceColor(prescription.adherenceScore)}>
+                            {prescription.adherenceScore}%
+                          </Badge>
+                          <Badge variant={getStatusColor(prescription.status)}>
+                            {prescription.status}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Last Updated: {prescription.lastUpdated ? new Date(prescription.lastUpdated).toLocaleDateString() : 'N/A'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Intervention Recommendations */}
+                <div className={`p-4 rounded-lg border ${
+                  adherenceReport.averageAdherence >= 80 ? 'bg-green-50 border-green-200' :
+                  adherenceReport.averageAdherence >= 70 ? 'bg-yellow-50 border-yellow-200' :
+                  'bg-red-50 border-red-200'
+                }`}>
+                  <h4 className={`font-medium mb-3 ${
+                    adherenceReport.averageAdherence >= 80 ? 'text-green-800' :
+                    adherenceReport.averageAdherence >= 70 ? 'text-yellow-800' :
+                    'text-red-800'
+                  }`}>
+                    <ApperIcon name="Lightbulb" size={16} className="inline mr-2" />
+                    Recommended Interventions
+                  </h4>
+                  <div className="space-y-2">
+                    {adherenceReport.recommendations.map((recommendation, index) => (
+                      <div key={index} className={`flex items-start space-x-2 text-sm ${
+                        adherenceReport.averageAdherence >= 80 ? 'text-green-700' :
+                        adherenceReport.averageAdherence >= 70 ? 'text-yellow-700' :
+                        'text-red-700'
+                      }`}>
+                        <ApperIcon name="CheckCircle" size={14} className="mt-0.5 flex-shrink-0" />
+                        <span>{recommendation}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex space-x-3 mt-6">
+                  <Button
+                    onClick={() => {
+                      toast.info("MTM session scheduled - patient will be contacted within 24 hours")
+                    }}
+                    className="btn-primary"
+                  >
+                    <ApperIcon name="Calendar" size={16} className="mr-2" />
+                    Schedule MTM Session
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      toast.success("Patient education materials sent via portal")
+                    }}
+                    variant="secondary"
+                  >
+                    <ApperIcon name="FileText" size={16} className="mr-2" />
+                    Send Education Materials
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      toast.success("Adherence monitoring reminder set for 30 days")
+                    }}
+                    variant="secondary"
+                  >
+                    <ApperIcon name="Bell" size={16} className="mr-2" />
+                    Set Follow-up Reminder
+                  </Button>
+                </div>
+              </Card>
+            </div>
+          ) : filterAdherencePatients().length === 0 ? (
+            <Empty message="No patients with adherence data found" />
+          ) : (
+            <div className="grid gap-4">
+              {filterAdherencePatients().map((patient) => (
+                <Card key={patient.patientId} className="p-6 hover:shadow-lg transition-shadow cursor-pointer">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-4 mb-2">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {patient.patientName}
+                        </h3>
+                        <Badge variant={getRiskLevelColor(patient.riskLevel)}>
+                          {patient.riskLevel} Risk
+                        </Badge>
+                        <Badge variant={getAdherenceColor(patient.averageAdherence)}>
+                          {patient.averageAdherence}% Adherence
+                        </Badge>
+                      </div>
+                      
+                      <div className="grid grid-cols-3 gap-4 text-sm text-gray-600">
+                        <div>
+                          <span className="font-medium">Patient ID:</span> {patient.patientId}
+                        </div>
+                        <div>
+                          <span className="font-medium">Active Prescriptions:</span> {patient.prescriptions.length}
+                        </div>
+                        <div>
+                          <span className="font-medium">Intervention Level:</span> 
+                          <span className={`ml-1 font-medium ${
+                            patient.riskLevel === 'High' ? 'text-red-600' :
+                            patient.riskLevel === 'Medium' ? 'text-yellow-600' :
+                            'text-green-600'
+                          }`}>
+                            {patient.riskLevel === 'High' ? 'Immediate' :
+                             patient.riskLevel === 'Medium' ? 'Moderate' : 'Minimal'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Risk Level Indicators */}
+                      {patient.riskLevel === 'High' && (
+                        <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded">
+                          <div className="flex items-center space-x-2">
+                            <ApperIcon name="AlertTriangle" className="h-4 w-4 text-red-600" />
+                            <span className="text-sm font-medium text-red-800">High Risk - Immediate Intervention Required</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {patient.riskLevel === 'Medium' && (
+                        <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                          <div className="flex items-center space-x-2">
+                            <ApperIcon name="AlertCircle" className="h-4 w-4 text-yellow-600" />
+                            <span className="text-sm font-medium text-yellow-800">Medium Risk - Intervention Recommended</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col space-y-2 ml-6">
+                      <Button
+                        onClick={() => loadPatientAdherenceReport(patient.patientId)}
+                        className="btn-primary"
+                      >
+                        <ApperIcon name="BarChart3" size={16} className="mr-2" />
+                        View Report
+                      </Button>
+                      
+                      {patient.riskLevel !== 'Low' && (
+                        <Button
+                          onClick={() => {
+                            toast.info(`Pharmacist consultation scheduled for ${patient.patientName}`)
+                          }}
+                          variant="warning"
+                          size="sm"
+                        >
+                          <ApperIcon name="UserCheck" size={16} className="mr-2" />
+                          Schedule Consultation
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
+      ) : activeTab === "inventory" ? (
         <>
           <div className="flex flex-col md:flex-row md:items-center justify-between space-y-4 md:space-y-0">
             <SearchBar
@@ -626,7 +954,7 @@ if (loading) return <Loading />
                 onChange={(e) => setInventoryFilter(e.target.value)}
                 className="input-field min-w-40"
               >
-<option value="all">All Items</option>
+                <option value="all">All Items</option>
                 <option value="low_stock">Low Stock</option>
                 <option value="expiring">Expiring Soon</option>
                 <option value="expired">Expired</option>
@@ -647,7 +975,7 @@ if (loading) return <Loading />
           </div>
 
           {/* Inventory Content */}
-{activeTab === "batch_tracking" ? (
+          {activeTab === "batch_tracking" ? (
             <div className="space-y-6">
               {/* Active Recalls */}
               {recalls.filter(r => r.status === "active").length > 0 && (
@@ -943,7 +1271,7 @@ if (loading) return <Loading />
             </div>
           )}
         </>
-) : (
+      ) : (
         <>
           <div className="flex justify-between items-center">
             <SearchBar
@@ -1103,7 +1431,6 @@ if (loading) return <Loading />
           )}
         </>
       )}
-
       {/* Verification Modal */}
       {showVerificationModal && selectedPrescription && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
