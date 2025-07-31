@@ -80,6 +80,13 @@ async getMedicalHistory(patientId) {
     return medicalHistoryData
   }
 
+  async getOutcomeTracking(patientId) {
+    await new Promise(resolve => setTimeout(resolve, 300))
+    // This would integrate with outcome tracking service
+    // For now, return empty array as outcomes are handled by separate service
+    return []
+  }
+
   async getMedications(patientId) {
     await new Promise(resolve => setTimeout(resolve, 200))
     // This would typically call the medication service

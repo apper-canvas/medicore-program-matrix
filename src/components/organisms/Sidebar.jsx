@@ -1,24 +1,24 @@
-import React from "react"
-import ApperIcon from "@/components/ApperIcon"
-import NavItem from "@/components/molecules/NavItem"
-import { cn } from "@/utils/cn"
+import React from "react";
+import ApperIcon from "@/components/ApperIcon";
+import NavItem from "@/components/molecules/NavItem";
+import { cn } from "@/utils/cn";
 
 const Sidebar = ({ isOpen, onClose }) => {
-const navigation = [
-    { name: "Dashboard", href: "/", icon: "LayoutDashboard" },
-    { name: "Patients", href: "/patients", icon: "Users" },
-    { name: "Appointments", href: "/appointments", icon: "Calendar", badge: "12" },
-    { name: "Doctor Schedules", href: "/doctor-schedules", icon: "CalendarDays" },
-    { name: "Clinical", href: "/clinical", icon: "Stethoscope" },
-    { name: "Laboratory", href: "/laboratory", icon: "TestTube", badge: "5" },
-{ name: "Prescription Processing", href: "/pharmacy", icon: "Pill", badge: "8" },
-    { name: "Radiology", href: "/radiology", icon: "ScanLine" },
-    { name: "Bed Management", href: "/bed-management", icon: "Hospital" },
-    { name: "Billing", href: "/billing", icon: "CreditCard" },
-    { name: "Reports", href: "/reports", icon: "FileText" },
-    { name: "Administration", href: "/administration", icon: "Settings" },
-  ]
-  
+  const navigation = [
+    { name: 'Dashboard', href: '/', icon: 'LayoutDashboard' },
+    { name: 'Patients', href: '/patients', icon: 'Users' },
+    { name: 'Appointments', href: '/appointments', icon: 'Calendar', badge: '12' },
+    { name: 'Doctor Schedules', href: '/doctor-schedules', icon: 'Clock' },
+    { name: 'Clinical', href: '/clinical', icon: 'Stethoscope' },
+    { name: 'Outcome Tracking', href: '/outcome-tracking', icon: 'TrendingUp' },
+    { name: 'Laboratory', href: '/laboratory', icon: 'Flask' },
+    { name: 'Pharmacy', href: '/pharmacy', icon: 'Pill' },
+    { name: 'Radiology', href: '/radiology', icon: 'Scan' },
+    { name: 'Bed Management', href: '/bed-management', icon: 'Bed' },
+    { name: 'Billing', href: '/billing', icon: 'CreditCard' },
+    { name: 'Reports', href: '/reports', icon: 'FileText' },
+    { name: 'Administration', href: '/administration', icon: 'Settings' },
+  ];
   return (
     <>
       {/* Mobile Overlay */}
@@ -98,7 +98,7 @@ const navigation = [
         </nav>
       </aside>
     </>
-  )
-}
+);
+};
 
-export default Sidebar
+export default Sidebar;

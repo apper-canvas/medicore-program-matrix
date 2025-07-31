@@ -125,6 +125,20 @@ class MedicalHistoryService {
     
     const deletedEntry = this.medicalHistory.splice(index, 1)[0]
     return { ...deletedEntry }
+}
+
+  async getOutcomesByPatientId(patientId) {
+    await new Promise(resolve => setTimeout(resolve, 300))
+    // This would integrate with outcome tracking service
+    // For now, return empty array as outcomes are handled by separate service
+    return []
+  }
+
+  async createOutcomeRecord(patientId, medicalHistoryId, outcomeData) {
+    await new Promise(resolve => setTimeout(resolve, 400))
+    // This would create an outcome record linked to medical history
+    // For now, just return the data
+    return { ...outcomeData, patientId, medicalHistoryId }
   }
 }
 
