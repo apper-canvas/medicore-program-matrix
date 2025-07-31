@@ -11,7 +11,7 @@ const navigation = [
     { name: "Doctor Schedules", href: "/doctor-schedules", icon: "CalendarDays" },
     { name: "Clinical", href: "/clinical", icon: "Stethoscope" },
     { name: "Laboratory", href: "/laboratory", icon: "TestTube", badge: "5" },
-    { name: "Pharmacy", href: "/pharmacy", icon: "Pill" },
+{ name: "Prescription Processing", href: "/pharmacy", icon: "Pill", badge: "8" },
     { name: "Radiology", href: "/radiology", icon: "ScanLine" },
     { name: "Bed Management", href: "/bed-management", icon: "Hospital" },
     { name: "Billing", href: "/billing", icon: "CreditCard" },
