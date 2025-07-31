@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import radiologyService from "@/services/api/radiologyService";
 import { toast } from "react-toastify";
 import patientService from "@/services/api/patientService";
@@ -7,7 +7,7 @@ import FormField from "@/components/molecules/FormField";
 import Input from "@/components/atoms/Input";
 import Button from "@/components/atoms/Button";
 import Card from "@/components/atoms/Card";
-
+import Badge from "@/components/atoms/Badge";
 const Radiology = () => {
   const [activeTab, setActiveTab] = useState("queue");
   const [showOrderForm, setShowOrderForm] = useState(false);
@@ -23,7 +23,23 @@ const Radiology = () => {
   const [selectedEquipment, setSelectedEquipment] = useState("");
   const [showPrepModal, setShowPrepModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
-  
+// DICOM Viewer state
+  const [selectedStudy, setSelectedStudy] = useState(null);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [currentImage, setCurrentImage] = useState(0);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [windowLevel, setWindowLevel] = useState({ window: 400, level: 40 });
+  const [measurements, setMeasurements] = useState([]);
+  const [activeTool, setActiveTool] = useState('pan');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const canvasRef = useRef(null);
+  const containerRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentMeasurement, setCurrentMeasurement] = useState(null);
+
   // Form data
   const [formData, setFormData] = useState({
     patientId: "",
@@ -206,8 +222,220 @@ const updateWorkflowStatus = async (orderId, status) => {
     } catch (error) {
       toast.error("Failed to update preparation");
     }
-  };
+};
 
+  // DICOM Viewer Functions
+  const openViewer = useCallback(async (orderId) => {
+    try {
+      const study = await radiologyService.getDicomStudy(orderId);
+      setSelectedStudy(study);
+      setCurrentImage(0);
+      setZoomLevel(1);
+      setPanOffset({ x: 0, y: 0 });
+      setWindowLevel({ window: 400, level: 40 });
+      setMeasurements([]);
+      setActiveTool('pan');
+      setViewerOpen(true);
+      
+      // Load first image
+      setTimeout(() => {
+        if (study.images && study.images.length > 0) {
+          loadDicomImage(study.images[0]);
+        }
+      }, 100);
+    } catch (error) {
+      toast.error('Failed to load DICOM study');
+    }
+  }, []);
+
+  const loadDicomImage = useCallback((imageData) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      
+      // Apply window/level adjustments
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      
+      // Apply zoom and pan
+      ctx.scale(zoomLevel, zoomLevel);
+      ctx.translate(panOffset.x / zoomLevel, panOffset.y / zoomLevel);
+      
+      // Apply window/level filter
+      ctx.filter = `contrast(${windowLevel.window / 200}%) brightness(${windowLevel.level + 50}%)`;
+      ctx.drawImage(img, 0, 0);
+      
+      ctx.restore();
+      
+      // Draw measurements
+      drawMeasurements(ctx);
+    };
+    
+    img.src = imageData.url;
+  }, [zoomLevel, panOffset, windowLevel, measurements]);
+
+  const drawMeasurements = useCallback((ctx) => {
+    ctx.save();
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 2;
+    ctx.font = '14px Arial';
+    ctx.fillStyle = '#00ff00';
+
+    measurements.forEach((measurement) => {
+      if (measurement.type === 'distance') {
+        ctx.beginPath();
+        ctx.moveTo(measurement.start.x, measurement.start.y);
+        ctx.lineTo(measurement.end.x, measurement.end.y);
+        ctx.stroke();
+        
+        // Draw measurement text
+        const distance = Math.sqrt(
+          Math.pow(measurement.end.x - measurement.start.x, 2) + 
+          Math.pow(measurement.end.y - measurement.start.y, 2)
+        ) * 0.1; // Convert pixels to mm (approximate)
+        
+        ctx.fillText(
+          `${distance.toFixed(1)} mm`,
+          (measurement.start.x + measurement.end.x) / 2,
+          (measurement.start.y + measurement.end.y) / 2 - 10
+        );
+      } else if (measurement.type === 'angle') {
+        // Draw angle measurement
+        const { center, point1, point2 } = measurement;
+        ctx.beginPath();
+        ctx.moveTo(center.x, center.y);
+        ctx.lineTo(point1.x, point1.y);
+        ctx.moveTo(center.x, center.y);
+        ctx.lineTo(point2.x, point2.y);
+        ctx.stroke();
+        
+        // Calculate angle
+        const angle1 = Math.atan2(point1.y - center.y, point1.x - center.x);
+        const angle2 = Math.atan2(point2.y - center.y, point2.x - center.x);
+        const angle = Math.abs(angle1 - angle2) * (180 / Math.PI);
+        
+        ctx.fillText(`${angle.toFixed(1)}°`, center.x + 10, center.y - 10);
+      }
+    });
+    
+    ctx.restore();
+  }, [measurements]);
+
+  const handleCanvasMouseDown = useCallback((e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (activeTool === 'pan') {
+      setIsDragging(true);
+      setDragStart({ x: x - panOffset.x, y: y - panOffset.y });
+    } else if (activeTool === 'distance') {
+      setIsDrawing(true);
+      setCurrentMeasurement({ type: 'distance', start: { x, y }, end: { x, y } });
+    }
+  }, [activeTool, panOffset]);
+
+  const handleCanvasMouseMove = useCallback((e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (isDragging && activeTool === 'pan') {
+      setPanOffset({ x: x - dragStart.x, y: y - dragStart.y });
+    } else if (isDrawing && activeTool === 'distance' && currentMeasurement) {
+      setCurrentMeasurement({ ...currentMeasurement, end: { x, y } });
+    }
+  }, [isDragging, isDrawing, activeTool, dragStart, currentMeasurement]);
+
+  const handleCanvasMouseUp = useCallback(() => {
+    if (isDragging) {
+      setIsDragging(false);
+    }
+    if (isDrawing && currentMeasurement) {
+      setMeasurements(prev => [...prev, currentMeasurement]);
+      setCurrentMeasurement(null);
+      setIsDrawing(false);
+    }
+  }, [isDragging, isDrawing, currentMeasurement]);
+
+  const handleZoom = useCallback((delta, clientX, clientY) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = clientX - rect.left;
+    const mouseY = clientY - rect.top;
+
+    const newZoom = Math.max(0.1, Math.min(5, zoomLevel + delta));
+    const zoomRatio = newZoom / zoomLevel;
+
+    setPanOffset(prev => ({
+      x: mouseX - (mouseX - prev.x) * zoomRatio,
+      y: mouseY - (mouseY - prev.y) * zoomRatio
+    }));
+
+    setZoomLevel(newZoom);
+  }, [zoomLevel]);
+
+  const handleWheel = useCallback((e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    handleZoom(delta, e.clientX, e.clientY);
+  }, [handleZoom]);
+
+  const resetView = useCallback(() => {
+    setZoomLevel(1);
+    setPanOffset({ x: 0, y: 0 });
+    setWindowLevel({ window: 400, level: 40 });
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen();
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen();
+      setIsFullscreen(false);
+    }
+  }, []);
+
+  const exportMeasurements = useCallback(() => {
+    const data = {
+      studyId: selectedStudy?.Id,
+      patientId: selectedStudy?.patientId,
+      measurements: measurements,
+      timestamp: new Date().toISOString()
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `measurements_${selectedStudy?.Id}_${new Date().getTime()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    toast.success('Measurements exported successfully');
+  }, [selectedStudy, measurements]);
+
+  // Update canvas when image changes
+  useEffect(() => {
+    if (selectedStudy && selectedStudy.images && selectedStudy.images[currentImage]) {
+      loadDicomImage(selectedStudy.images[currentImage]);
+    }
+  }, [selectedStudy, currentImage, loadDicomImage]);
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -923,6 +1151,27 @@ const updateWorkflowStatus = async (orderId, status) => {
                             {equip && (
                               <div className="text-sm text-gray-500">{equip.location}</div>
                             )}
+</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            {order.status === 'completed' && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openViewer(order.Id)}
+                                className="mr-2"
+                              >
+                                <ApperIcon name="Eye" size={16} className="mr-1" />
+                                View Images
+                              </Button>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => updateWorkflowStatus(order.Id, 'in-progress')}
+                            >
+                              <ApperIcon name="Play" size={16} className="mr-1" />
+                              Start
+                            </Button>
                           </td>
                         </tr>
                       );
@@ -1020,6 +1269,247 @@ const updateWorkflowStatus = async (orderId, status) => {
                 >
                   Complete Preparation
                 </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+)}
+
+      {/* DICOM Viewer Modal */}
+      {viewerOpen && selectedStudy && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center">
+          <div ref={containerRef} className="w-full h-full flex flex-col">
+            <div className="bg-gray-900 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <h3 className="text-lg font-semibold">
+                  {selectedStudy.patientName} - {selectedStudy.studyDescription}
+                </h3>
+                <Badge variant="info">
+                  Image {currentImage + 1} of {selectedStudy.images?.length || 0}
+                </Badge>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleFullscreen}
+                  className="text-white hover:bg-gray-700"
+                >
+                  <ApperIcon name={isFullscreen ? "Minimize2" : "Maximize2"} size={16} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setViewerOpen(false)}
+                  className="text-white hover:bg-gray-700"
+                >
+                  <ApperIcon name="X" size={16} />
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex flex-1 overflow-hidden">
+              {/* Tool Panel */}
+              <div className="bg-gray-800 text-white p-4 w-64 space-y-4">
+                <div>
+                  <h4 className="font-medium mb-2">Tools</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant={activeTool === 'pan' ? 'primary' : 'ghost'}
+                      size="sm"
+                      onClick={() => setActiveTool('pan')}
+                      className="w-full"
+                    >
+                      <ApperIcon name="Move" size={16} className="mr-1" />
+                      Pan
+                    </Button>
+                    <Button
+                      variant={activeTool === 'zoom' ? 'primary' : 'ghost'}
+                      size="sm"
+                      onClick={() => setActiveTool('zoom')}
+                      className="w-full"
+                    >
+                      <ApperIcon name="ZoomIn" size={16} className="mr-1" />
+                      Zoom
+                    </Button>
+                    <Button
+                      variant={activeTool === 'distance' ? 'primary' : 'ghost'}
+                      size="sm"
+                      onClick={() => setActiveTool('distance')}
+                      className="w-full"
+                    >
+                      <ApperIcon name="Ruler" size={16} className="mr-1" />
+                      Distance
+                    </Button>
+                    <Button
+                      variant={activeTool === 'angle' ? 'primary' : 'ghost'}
+                      size="sm"
+                      onClick={() => setActiveTool('angle')}
+                      className="w-full"
+                    >
+                      <ApperIcon name="Triangle" size={16} className="mr-1" />
+                      Angle
+                    </Button>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="font-medium mb-2">Window/Level</h4>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-sm">Window: {windowLevel.window}</label>
+                      <input
+                        type="range"
+                        min="50"
+                        max="2000"
+                        value={windowLevel.window}
+                        onChange={(e) => setWindowLevel(prev => ({ ...prev, window: parseInt(e.target.value) }))}
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm">Level: {windowLevel.level}</label>
+                      <input
+                        type="range"
+                        min="-100"
+                        max="100"
+                        value={windowLevel.level}
+                        onChange={(e) => setWindowLevel(prev => ({ ...prev, level: parseInt(e.target.value) }))}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="font-medium mb-2">Zoom: {(zoomLevel * 100).toFixed(0)}%</h4>
+                  <div className="flex space-x-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleZoom(-0.2, 0, 0)}
+                      className="flex-1"
+                    >
+                      <ApperIcon name="ZoomOut" size={16} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleZoom(0.2, 0, 0)}
+                      className="flex-1"
+                    >
+                      <ApperIcon name="ZoomIn" size={16} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={resetView}
+                      className="flex-1"
+                    >
+                      <ApperIcon name="RotateCcw" size={16} />
+                    </Button>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="font-medium mb-2">Measurements ({measurements.length})</h4>
+                  <div className="space-y-2">
+                    {measurements.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={exportMeasurements}
+                        className="w-full"
+                      >
+                        <ApperIcon name="Download" size={16} className="mr-1" />
+                        Export
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setMeasurements([])}
+                      className="w-full"
+                    >
+                      <ApperIcon name="Trash2" size={16} className="mr-1" />
+                      Clear All
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Image Viewer */}
+              <div className="flex-1 bg-black flex items-center justify-center overflow-hidden">
+                <canvas
+                  ref={canvasRef}
+                  onMouseDown={handleCanvasMouseDown}
+                  onMouseMove={handleCanvasMouseMove}
+                  onMouseUp={handleCanvasMouseUp}
+                  onWheel={handleWheel}
+                  className="max-w-full max-h-full cursor-crosshair"
+                  style={{
+                    cursor: activeTool === 'pan' ? 'grab' : activeTool === 'zoom' ? 'zoom-in' : 'crosshair'
+                  }}
+                />
+              </div>
+
+              {/* Image Navigation */}
+              {selectedStudy.images && selectedStudy.images.length > 1 && (
+                <div className="bg-gray-800 text-white p-4 w-48">
+                  <h4 className="font-medium mb-2">Images</h4>
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {selectedStudy.images.map((image, index) => (
+                      <div
+                        key={index}
+                        onClick={() => setCurrentImage(index)}
+                        className={`p-2 rounded cursor-pointer transition-colors ${
+                          currentImage === index ? 'bg-primary-600' : 'bg-gray-700 hover:bg-gray-600'
+                        }`}
+                      >
+                        <div className="text-sm font-medium">Image {index + 1}</div>
+                        <div className="text-xs text-gray-300">{image.seriesDescription}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Bottom Controls */}
+            <div className="bg-gray-900 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="text-sm">
+                  Study Date: {selectedStudy.studyDate}
+                </div>
+                <div className="text-sm">
+                  Modality: {selectedStudy.modality}
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                {selectedStudy.images && selectedStudy.images.length > 1 && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setCurrentImage(Math.max(0, currentImage - 1))}
+                      disabled={currentImage === 0}
+                      className="text-white hover:bg-gray-700"
+                    >
+                      <ApperIcon name="ChevronLeft" size={16} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setCurrentImage(Math.min(selectedStudy.images.length - 1, currentImage + 1))}
+                      disabled={currentImage === selectedStudy.images.length - 1}
+                      className="text-white hover:bg-gray-700"
+                    >
+                      <ApperIcon name="ChevronRight" size={16} />
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           </div>

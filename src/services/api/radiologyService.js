@@ -208,6 +208,58 @@ const mockWorkflowItems = [
     notes: "Patient became claustrophobic, taking break"
   }
 ];
+// Mock DICOM Studies Data
+const mockDicomStudies = [
+  {
+    Id: 1,
+    orderId: 2,
+    patientId: 2,
+    patientName: "Sarah Johnson",
+    studyDescription: "MRI Brain with Contrast",
+    modality: "MRI",
+    studyDate: "2024-01-15",
+    studyTime: "14:30:00",
+    images: [
+      {
+        Id: 1,
+        seriesDescription: "T1 Axial",
+        url: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0iIzMzMzMzMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjI0IiBmaWxsPSIjZmZmZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+VDEgQXhpYWwgLSBTbGljZSAxPC90ZXh0Pjwvc3ZnPg=="
+      },
+      {
+        Id: 2,
+        seriesDescription: "T1 Axial",
+        url: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0iIzQ0NDQ0NCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjI0IiBmaWxsPSIjZmZmZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+VDEgQXhpYWwgLSBTbGljZSAyPC90ZXh0Pjwvc3ZnPg=="
+      },
+      {
+        Id: 3,
+        seriesDescription: "T2 FLAIR",
+        url: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0iIzU1NTU1NSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjI0IiBmaWxsPSIjZmZmZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+VDIgRkxBSVIgLSBTbGljZSAxPC90ZXh0Pjwvc3ZnPg=="
+      }
+    ]
+  },
+  {
+    Id: 2,
+    orderId: 3,
+    patientId: 3,
+    patientName: "Michael Davis",
+    studyDescription: "CT Chest with Contrast",
+    modality: "CT",
+    studyDate: "2024-01-15",
+    studyTime: "16:45:00",
+    images: [
+      {
+        Id: 4,
+        seriesDescription: "Chest Axial",
+        url: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0iIzIyMjIyMiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjI0IiBmaWxsPSIjZmZmZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+Q1QgQ2hlc3QgLSBBeGlhbDwvdGV4dD48Y2lyY2xlIGN4PSIyNTYiIGN5PSIyNTYiIHI9IjEwMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNjY2NjY2IiBzdHJva2Utd2lkdGg9IjIiLz48L3N2Zz4="
+      },
+      {
+        Id: 5,
+        seriesDescription: "Chest Coronal",
+        url: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0iIzMzMzMzMyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjI0IiBmaWxsPSIjZmZmZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+Q1QgQ2hlc3QgLSBDb3JvbmFsPC90ZXh0Pjwvc3ZnPg=="
+      }
+    ]
+  }
+];
 
 // Common exam types
 const examTypes = [
@@ -372,6 +424,31 @@ class RadiologyService {
     }
     
     return { success: true };
+  }
+// DICOM Viewer Methods
+  async getDicomStudy(orderId) {
+    await this.delay(500); // Simulate network delay
+    
+    const study = mockDicomStudies.find(s => s.orderId === orderId);
+    if (!study) {
+      throw new Error('DICOM study not found');
+    }
+    
+    return { ...study };
+  }
+
+  async getDicomImage(imageId) {
+    await this.delay(300);
+    
+    // Find image across all studies
+    for (const study of mockDicomStudies) {
+      const image = study.images.find(img => img.Id === imageId);
+      if (image) {
+        return { ...image };
+      }
+    }
+    
+    throw new Error('DICOM image not found');
   }
 
   // Helper methods
