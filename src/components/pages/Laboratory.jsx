@@ -647,14 +647,13 @@ if (loading) return <Loading />
                         return (
                             <div
                                 key={order.Id}
-                                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                                 <div>
-                                    <div className="font-medium">Order #{order.Id}- {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
-<div className="text-sm text-gray-600">
+                                    <div className="font-medium">Order #{order.Id}- {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}</div>
+                                    <div className="text-sm text-gray-600">
                                         {order.tests?.length || 0} tests ordered
                                     </div>
                                 </div>
-                                <Badge variant={getStatusColor(order.collectionStatus)}>
                                 <Badge variant={getStatusColor(order.collectionStatus)}>
                                     {order.collectionStatus}
                                 </Badge>
