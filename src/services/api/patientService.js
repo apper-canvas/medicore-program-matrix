@@ -91,6 +91,22 @@ async getMedicalHistory(patientId) {
     // This would typically call the allergy service
     return []
   }
+async getLabOrders(patientId) {
+    await new Promise(resolve => setTimeout(resolve, 200))
+    // This would typically call the laboratory service
+    const laboratoryService = await import('./laboratoryService.js')
+    return laboratoryService.default.getOrdersByPatient(patientId)
+  }
+
+  async createLabOrder(patientId, orderData) {
+    await new Promise(resolve => setTimeout(resolve, 300))
+    // This would typically create lab order through laboratory service
+    const laboratoryService = await import('./laboratoryService.js')
+    return laboratoryService.default.createOrder({
+      ...orderData,
+      patientId: parseInt(patientId)
+    })
+  }
 }
 
 export default new PatientService()
