@@ -9,12 +9,13 @@ const Button = forwardRef(({
   disabled,
   ...props 
 }, ref) => {
-  const variants = {
+const variants = {
     primary: "bg-primary-500 hover:bg-primary-600 text-white shadow-card hover:shadow-card-hover",
     secondary: "bg-white hover:bg-gray-50 text-gray-700 border border-gray-300",
     accent: "bg-accent-500 hover:bg-accent-600 text-white shadow-card hover:shadow-card-hover",
     success: "bg-green-500 hover:bg-green-600 text-white shadow-card hover:shadow-card-hover",
     danger: "bg-red-500 hover:bg-red-600 text-white shadow-card hover:shadow-card-hover",
+    warning: "bg-yellow-500 hover:bg-yellow-600 text-white shadow-card hover:shadow-card-hover",
     ghost: "hover:bg-gray-100 text-gray-700"
   }
   

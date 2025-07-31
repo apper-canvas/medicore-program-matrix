@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react"
 import { toast } from "react-toastify"
 import ApperIcon from "@/components/ApperIcon"
 import Card from "@/components/atoms/Card"
+import MetricCard from "@/components/molecules/MetricCard"
 import Button from "@/components/atoms/Button"
 import Badge from "@/components/atoms/Badge"
 import Input from "@/components/atoms/Input"
@@ -18,18 +19,25 @@ const Pharmacy = () => {
   const [activeTab, setActiveTab] = useState("queue")
   const [prescriptions, setPrescriptions] = useState([])
   const [filteredPrescriptions, setFilteredPrescriptions] = useState([])
-  const [loading, setLoading] = useState(true)
+const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedPrescription, setSelectedPrescription] = useState(null)
   const [workflowStats, setWorkflowStats] = useState(null)
+  
+  // Inventory states
+  const [inventory, setInventory] = useState([])
+  const [inventoryStats, setInventoryStats] = useState(null)
+  const [inventoryFilter, setInventoryFilter] = useState("all")
+  const [inventorySort, setInventorySort] = useState("name")
+  const [selectedDrug, setSelectedDrug] = useState(null)
+  const [showReorderModal, setShowReorderModal] = useState(false)
 
   // Modal states
   const [showVerificationModal, setShowVerificationModal] = useState(false)
   const [showDispensingModal, setShowDispensingModal] = useState(false)
   const [showCounselingModal, setShowCounselingModal] = useState(false)
   const [showInteractionModal, setShowInteractionModal] = useState(false)
-
   // Form states
   const [verificationData, setVerificationData] = useState({
     interactions: [],
@@ -59,10 +67,15 @@ const Pharmacy = () => {
     loadWorkflowStats()
   }, [])
 
-  useEffect(() => {
+useEffect(() => {
     filterPrescriptions()
   }, [prescriptions, searchTerm, activeTab])
 
+  useEffect(() => {
+    if (activeTab === "inventory") {
+      loadInventory()
+    }
+  }, [activeTab])
   const loadPrescriptions = async () => {
     try {
       setLoading(true)
@@ -81,8 +94,108 @@ const Pharmacy = () => {
       const stats = await prescriptionService.getWorkflowStats()
       setWorkflowStats(stats)
     } catch (err) {
-      console.error("Failed to load workflow stats:", err)
+console.error("Failed to load workflow stats:", err)
     }
+  }
+
+  async function loadInventory() {
+    try {
+      setLoading(true)
+      const [inventoryData, stats] = await Promise.all([
+        medicationService.getInventory(),
+        medicationService.getInventoryStats()
+      ])
+      setInventory(inventoryData)
+      setInventoryStats(stats)
+    } catch (err) {
+      setError(err.message)
+      toast.error("Failed to load inventory data")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function filterInventory() {
+    let filtered = inventory
+
+    if (searchTerm) {
+      filtered = filtered.filter(item =>
+        item.drugName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.manufacturer.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.ndc.includes(searchTerm)
+      )
+    }
+
+    if (inventoryFilter !== "all") {
+      filtered = filtered.filter(item => {
+        switch (inventoryFilter) {
+          case "low_stock":
+            return item.currentStock <= item.reorderPoint
+          case "expiring":
+            const daysUntilExpiry = Math.ceil((new Date(item.expiryDate) - new Date()) / (1000 * 60 * 60 * 24))
+            return daysUntilExpiry <= 90 && daysUntilExpiry > 0
+          case "expired":
+            return new Date(item.expiryDate) < new Date()
+          case "out_of_stock":
+            return item.currentStock === 0
+          default:
+            return true
+        }
+      })
+    }
+
+    // Sort inventory
+    filtered.sort((a, b) => {
+      switch (inventorySort) {
+        case "name":
+          return a.drugName.localeCompare(b.drugName)
+        case "stock":
+          return a.currentStock - b.currentStock
+        case "expiry":
+          return new Date(a.expiryDate) - new Date(b.expiryDate)
+        case "reorder":
+          return (a.currentStock - a.reorderPoint) - (b.currentStock - b.reorderPoint)
+        default:
+          return 0
+      }
+    })
+
+    return filtered
+  }
+
+  async function handleUpdateStock(drugId, newStock) {
+    try {
+      await medicationService.updateStock(drugId, newStock)
+      await loadInventory()
+      toast.success("Stock updated successfully")
+    } catch (err) {
+      toast.error("Failed to update stock")
+    }
+  }
+
+  async function handleSetReorderPoint(drugId, reorderPoint) {
+    try {
+      await medicationService.setReorderPoint(drugId, reorderPoint)
+      await loadInventory()
+      setShowReorderModal(false)
+      toast.success("Reorder point updated successfully")
+    } catch (err) {
+      toast.error("Failed to update reorder point")
+    }
+  }
+
+  function getStockStatusColor(item) {
+    if (item.currentStock === 0) return "error"
+    if (item.currentStock <= item.reorderPoint) return "warning"
+    return "success"
+  }
+
+  function getExpiryStatusColor(expiryDate) {
+    const daysUntilExpiry = Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24))
+    if (daysUntilExpiry < 0) return "error"
+    if (daysUntilExpiry <= 30) return "error"
+    if (daysUntilExpiry <= 90) return "warning"
+    return "success"
   }
 
   const filterPrescriptions = () => {
@@ -267,11 +380,12 @@ const Pharmacy = () => {
     }
   }
 
-  const tabs = [
+const tabs = [
     { id: "queue", name: "Prescription Queue", icon: "Inbox", count: prescriptions.filter(p => p.status === "Pending").length },
     { id: "review", name: "Review & Verify", icon: "Shield", count: prescriptions.filter(p => ["Verified", "Requires Review"].includes(p.status)).length },
     { id: "dispensing", name: "Dispensing", icon: "Package", count: prescriptions.filter(p => p.status === "Verified").length },
-    { id: "counseling", name: "Patient Counseling", icon: "MessageSquare", count: prescriptions.filter(p => p.status === "Dispensed").length }
+    { id: "counseling", name: "Patient Counseling", icon: "MessageSquare", count: prescriptions.filter(p => p.status === "Dispensed").length },
+    { id: "inventory", name: "Drug Inventory", icon: "Database", count: inventory.filter(item => item.currentStock <= item.reorderPoint).length }
   ]
 
   if (loading) return <Loading />
@@ -285,8 +399,34 @@ const Pharmacy = () => {
           <h1 className="text-3xl font-bold text-gray-900">Prescription Processing Center</h1>
           <p className="text-gray-600 mt-1">E-prescription management, verification, and dispensing workflow</p>
         </div>
-        
-        {workflowStats && (
+{activeTab === "inventory" && inventoryStats ? (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <MetricCard
+              title="Total Items"
+              value={inventoryStats.totalItems}
+              icon="Package"
+              color="primary"
+            />
+            <MetricCard
+              title="Low Stock"
+              value={inventoryStats.lowStock}
+              icon="AlertTriangle"
+              color="warning"
+            />
+            <MetricCard
+              title="Expiring Soon"
+              value={inventoryStats.expiringSoon}
+              icon="Clock"
+              color="error"
+            />
+            <MetricCard
+              title="Out of Stock"
+              value={inventoryStats.outOfStock}
+              icon="XCircle"
+              color="error"
+            />
+          </div>
+        ) : workflowStats && (
           <div className="flex space-x-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-primary-600">{workflowStats.total}</div>
@@ -330,131 +470,333 @@ const Pharmacy = () => {
       </div>
 
       {/* Search */}
-      <div className="flex justify-between items-center">
-        <SearchBar
-          value={searchTerm}
-          onChange={setSearchTerm}
-          placeholder="Search prescriptions, patients, or medications..."
-          className="max-w-md"
-        />
-      </div>
+{activeTab === "inventory" ? (
+        <>
+          <div className="flex flex-col md:flex-row md:items-center justify-between space-y-4 md:space-y-0">
+            <SearchBar
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Search drugs, NDC, or manufacturer..."
+              className="max-w-md"
+            />
+            
+            <div className="flex space-x-4">
+              <select
+                value={inventoryFilter}
+                onChange={(e) => setInventoryFilter(e.target.value)}
+                className="input-field min-w-40"
+              >
+                <option value="all">All Items</option>
+                <option value="low_stock">Low Stock</option>
+                <option value="expiring">Expiring Soon</option>
+                <option value="expired">Expired</option>
+                <option value="out_of_stock">Out of Stock</option>
+              </select>
+              
+              <select
+                value={inventorySort}
+                onChange={(e) => setInventorySort(e.target.value)}
+                className="input-field min-w-32"
+              >
+                <option value="name">Name</option>
+                <option value="stock">Stock Level</option>
+                <option value="expiry">Expiry Date</option>
+                <option value="reorder">Reorder Status</option>
+              </select>
+            </div>
+          </div>
 
-      {/* Content */}
-      {filteredPrescriptions.length === 0 ? (
-        <Empty message="No prescriptions found" />
-      ) : (
-        <div className="grid gap-6">
-          {filteredPrescriptions.map((prescription) => (
-            <Card key={prescription.Id} className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  {/* Header */}
-                  <div className="flex items-center space-x-4 mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      {prescription.prescriptionNumber}
-                    </h3>
-                    <Badge variant={getStatusColor(prescription.status)}>
-                      {prescription.status}
-                    </Badge>
-                    <Badge variant={getPriorityColor(prescription.priority)}>
-                      {prescription.priority}
-                    </Badge>
-                  </div>
+          {/* Inventory Content */}
+          {filterInventory().length === 0 ? (
+            <Empty message="No inventory items found" />
+          ) : (
+            <div className="grid gap-6">
+              {filterInventory().map((item) => {
+                const daysUntilExpiry = Math.ceil((new Date(item.expiryDate) - new Date()) / (1000 * 60 * 60 * 24))
+                const stockStatus = getStockStatusColor(item)
+                const expiryStatus = getExpiryStatusColor(item.expiryDate)
+                
+                return (
+                  <Card key={item.Id} className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        {/* Header */}
+                        <div className="flex items-center space-x-4 mb-4">
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {item.drugName}
+                          </h3>
+                          <Badge variant={stockStatus}>
+                            {item.currentStock === 0 ? "Out of Stock" : 
+                             item.currentStock <= item.reorderPoint ? "Low Stock" : "In Stock"}
+                          </Badge>
+                          <Badge variant={expiryStatus}>
+                            {daysUntilExpiry < 0 ? "Expired" :
+                             daysUntilExpiry <= 30 ? "Expires Soon" :
+                             daysUntilExpiry <= 90 ? "Expiring" : "Good"}
+                          </Badge>
+                        </div>
 
-                  {/* Patient Info */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div>
-                      <div className="text-sm text-gray-500">Patient</div>
-                      <div className="font-medium">{prescription.patientName}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-500">Prescriber</div>
-                      <div className="font-medium">{prescription.doctorName}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-500">Received</div>
-                      <div className="font-medium">
-                        {new Date(prescription.dateReceived).toLocaleDateString()}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Medications */}
-                  <div className="mb-4">
-                    <div className="text-sm text-gray-500 mb-2">Medications</div>
-                    <div className="space-y-2">
-                      {prescription.medications.map((med, index) => (
-                        <div key={index} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
+                        {/* Drug Info */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                           <div>
-                            <div className="font-medium">{med.drugName} {med.dosage}</div>
-                            <div className="text-sm text-gray-600">
-                              {med.frequency} • Qty: {med.quantity} • {med.daysSupply} days
-                            </div>
-                            <div className="text-sm text-gray-500">{med.instructions}</div>
+                            <div className="text-sm text-gray-500">NDC</div>
+                            <div className="font-medium">{item.ndc}</div>
                           </div>
-                          <div className="text-xs text-gray-400">NDC: {med.ndc}</div>
+                          <div>
+                            <div className="text-sm text-gray-500">Manufacturer</div>
+                            <div className="font-medium">{item.manufacturer}</div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-gray-500">Dosage Form</div>
+                            <div className="font-medium">{item.dosageForm}</div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-gray-500">Strength</div>
+                            <div className="font-medium">{item.strength}</div>
+                          </div>
                         </div>
-                      ))}
+
+                        {/* Stock Information */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                          <div>
+                            <div className="text-sm text-gray-500">Current Stock</div>
+                            <div className={`text-xl font-bold ${
+                              item.currentStock === 0 ? "text-red-600" :
+                              item.currentStock <= item.reorderPoint ? "text-orange-600" : "text-green-600"
+                            }`}>
+                              {item.currentStock} {item.unit}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-gray-500">Reorder Point</div>
+                            <div className="font-medium">{item.reorderPoint} {item.unit}</div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-gray-500">Expiry Date</div>
+                            <div className={`font-medium ${
+                              daysUntilExpiry < 0 ? "text-red-600" :
+                              daysUntilExpiry <= 30 ? "text-red-600" :
+                              daysUntilExpiry <= 90 ? "text-orange-600" : "text-gray-900"
+                            }`}>
+                              {new Date(item.expiryDate).toLocaleDateString()}
+                              <div className="text-sm text-gray-500">
+                                {daysUntilExpiry < 0 ? `${Math.abs(daysUntilExpiry)} days ago` :
+                                 `${daysUntilExpiry} days left`}
+                              </div>
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-gray-500">Location</div>
+                            <div className="font-medium">{item.location}</div>
+                          </div>
+                        </div>
+
+                        {/* Alerts */}
+                        {(item.currentStock <= item.reorderPoint || daysUntilExpiry <= 90) && (
+                          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <div className="flex items-center space-x-2 mb-2">
+                              <ApperIcon name="AlertTriangle" className="h-4 w-4 text-yellow-600" />
+                              <span className="text-sm font-medium text-yellow-800">Inventory Alerts</span>
+                            </div>
+                            {item.currentStock <= item.reorderPoint && (
+                              <div className="text-sm text-yellow-700 mb-1">
+                                Stock level is at or below reorder point
+                              </div>
+                            )}
+                            {daysUntilExpiry <= 90 && daysUntilExpiry > 0 && (
+                              <div className="text-sm text-yellow-700">
+                                Item expires in {daysUntilExpiry} days
+                              </div>
+                            )}
+                            {daysUntilExpiry <= 0 && (
+                              <div className="text-sm text-red-700">
+                                Item has expired
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex flex-col space-y-2 ml-6">
+                        <Button
+                          onClick={() => {
+                            const newStock = prompt("Enter new stock quantity:", item.currentStock)
+                            if (newStock && !isNaN(newStock)) {
+                              handleUpdateStock(item.Id, parseInt(newStock))
+                            }
+                          }}
+                          variant="secondary"
+                          size="sm"
+                        >
+                          <ApperIcon name="Edit" size={16} className="mr-2" />
+                          Update Stock
+                        </Button>
+                        
+                        <Button
+                          onClick={() => {
+                            setSelectedDrug(item)
+                            setShowReorderModal(true)
+                          }}
+                          variant="secondary"
+                          size="sm"
+                        >
+                          <ApperIcon name="RefreshCw" size={16} className="mr-2" />
+                          Set Reorder
+                        </Button>
+                        
+                        {item.currentStock <= item.reorderPoint && (
+                          <Button
+                            onClick={() => {
+                              const orderQty = prompt("Enter order quantity:", item.reorderPoint * 2)
+                              if (orderQty && !isNaN(orderQty)) {
+                                toast.success(`Order placed for ${orderQty} ${item.unit} of ${item.drugName}`)
+                              }
+                            }}
+                            variant="warning"
+                            size="sm"
+                          >
+                            <ApperIcon name="ShoppingCart" size={16} className="mr-2" />
+                            Reorder
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="flex justify-between items-center">
+            <SearchBar
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Search prescriptions, patients, or medications..."
+              className="max-w-md"
+            />
+          </div>
+
+          {/* Content */}
+          {filteredPrescriptions.length === 0 ? (
+            <Empty message="No prescriptions found" />
+          ) : (
+            <div className="grid gap-6">
+              {filteredPrescriptions.map((prescription) => (
+                <Card key={prescription.Id} className="p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      {/* Header */}
+                      <div className="flex items-center space-x-4 mb-4">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {prescription.prescriptionNumber}
+                        </h3>
+                        <Badge variant={getStatusColor(prescription.status)}>
+                          {prescription.status}
+                        </Badge>
+                        <Badge variant={getPriorityColor(prescription.priority)}>
+                          {prescription.priority}
+                        </Badge>
+                      </div>
+
+                      {/* Patient Info */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div>
+                          <div className="text-sm text-gray-500">Patient</div>
+                          <div className="font-medium">{prescription.patientName}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-gray-500">Prescriber</div>
+                          <div className="font-medium">{prescription.doctorName}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-gray-500">Received</div>
+                          <div className="font-medium">
+                            {new Date(prescription.dateReceived).toLocaleDateString()}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Medications */}
+                      <div className="mb-4">
+                        <div className="text-sm text-gray-500 mb-2">Medications</div>
+                        <div className="space-y-2">
+                          {prescription.medications.map((med, index) => (
+                            <div key={index} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
+                              <div>
+                                <div className="font-medium">{med.drugName} {med.dosage}</div>
+                                <div className="text-sm text-gray-600">
+                                  {med.frequency} • Qty: {med.quantity} • {med.daysSupply} days
+                                </div>
+                                <div className="text-sm text-gray-500">{med.instructions}</div>
+                              </div>
+                              <div className="text-xs text-gray-400">NDC: {med.ndc}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Alerts */}
+                      {(prescription.interactions.length > 0 || prescription.allergies.length > 0) && (
+                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <ApperIcon name="AlertTriangle" className="h-4 w-4 text-red-600" />
+                            <span className="text-sm font-medium text-red-800">Clinical Alerts</span>
+                          </div>
+                          {prescription.interactions.length > 0 && (
+                            <div className="text-sm text-red-700 mb-1">
+                              Drug Interactions: {prescription.interactions.length} found
+                            </div>
+                          )}
+                          {prescription.allergies.length > 0 && (
+                            <div className="text-sm text-red-700">
+                              Allergy Alerts: {prescription.allergies.join(", ")}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex flex-col space-y-2 ml-6">
+                      {activeTab === "queue" && prescription.status === "Pending" && (
+                        <Button
+                          onClick={() => handleVerifyPrescription(prescription)}
+                          className="btn-primary"
+                        >
+                          <ApperIcon name="Shield" size={16} className="mr-2" />
+                          Verify
+                        </Button>
+                      )}
+                      
+                      {activeTab === "dispensing" && prescription.status === "Verified" && (
+                        <Button
+                          onClick={() => handleStartDispensing(prescription)}
+                          className="btn-primary"
+                        >
+                          <ApperIcon name="Package" size={16} className="mr-2" />
+                          Dispense
+                        </Button>
+                      )}
+                      
+                      {activeTab === "counseling" && prescription.status === "Dispensed" && (
+                        <Button
+                          onClick={() => handleStartCounseling(prescription)}
+                          className="btn-primary"
+                        >
+                          <ApperIcon name="MessageSquare" size={16} className="mr-2" />
+                          Counsel
+                        </Button>
+                      )}
                     </div>
                   </div>
-
-                  {/* Alerts */}
-                  {(prescription.interactions.length > 0 || prescription.allergies.length > 0) && (
-                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <ApperIcon name="AlertTriangle" className="h-4 w-4 text-red-600" />
-                        <span className="text-sm font-medium text-red-800">Clinical Alerts</span>
-                      </div>
-                      {prescription.interactions.length > 0 && (
-                        <div className="text-sm text-red-700 mb-1">
-                          Drug Interactions: {prescription.interactions.length} found
-                        </div>
-                      )}
-                      {prescription.allergies.length > 0 && (
-                        <div className="text-sm text-red-700">
-                          Allergy Alerts: {prescription.allergies.join(", ")}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Actions */}
-                <div className="flex flex-col space-y-2 ml-6">
-                  {activeTab === "queue" && prescription.status === "Pending" && (
-                    <Button
-                      onClick={() => handleVerifyPrescription(prescription)}
-                      className="btn-primary"
-                    >
-                      <ApperIcon name="Shield" size={16} className="mr-2" />
-                      Verify
-                    </Button>
-                  )}
-                  
-                  {activeTab === "dispensing" && prescription.status === "Verified" && (
-                    <Button
-                      onClick={() => handleStartDispensing(prescription)}
-                      className="btn-primary"
-                    >
-                      <ApperIcon name="Package" size={16} className="mr-2" />
-                      Dispense
-                    </Button>
-                  )}
-                  
-                  {activeTab === "counseling" && prescription.status === "Dispensed" && (
-                    <Button
-                      onClick={() => handleStartCounseling(prescription)}
-                      className="btn-primary"
-                    >
-                      <ApperIcon name="MessageSquare" size={16} className="mr-2" />
-                      Counsel
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* Verification Modal */}
@@ -803,6 +1145,71 @@ const Pharmacy = () => {
                   Complete Counseling
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+)}
+
+      {/* Reorder Point Modal */}
+      {showReorderModal && selectedDrug && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Set Reorder Point</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowReorderModal(false)}
+              >
+                <ApperIcon name="X" size={16} />
+              </Button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <Label>Drug Name</Label>
+                <Input value={selectedDrug.drugName} disabled />
+              </div>
+              
+              <div>
+                <Label>Current Stock</Label>
+                <Input value={`${selectedDrug.currentStock} ${selectedDrug.unit}`} disabled />
+              </div>
+              
+              <div>
+                <Label>Current Reorder Point</Label>
+                <Input value={`${selectedDrug.reorderPoint} ${selectedDrug.unit}`} disabled />
+              </div>
+              
+              <div>
+                <Label>New Reorder Point</Label>
+                <Input
+                  type="number"
+                  placeholder="Enter new reorder point"
+                  id="newReorderPoint"
+                />
+              </div>
+            </div>
+            
+            <div className="flex space-x-3 mt-6">
+              <Button
+                variant="secondary"
+                onClick={() => setShowReorderModal(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  const newPoint = document.getElementById('newReorderPoint').value
+                  if (newPoint && !isNaN(newPoint)) {
+                    handleSetReorderPoint(selectedDrug.Id, parseInt(newPoint))
+                  }
+                }}
+                className="flex-1"
+              >
+                Update
+              </Button>
             </div>
           </div>
         </div>

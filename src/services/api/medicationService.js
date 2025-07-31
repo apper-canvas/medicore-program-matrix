@@ -62,8 +62,161 @@ class MedicationService {
         description: "Increased risk of lactic acidosis"
       }
     ]
+}
+
+  async getInventory() {
+    await new Promise(resolve => setTimeout(resolve, 800))
+    
+    const mockInventory = [
+      {
+        Id: 1,
+        drugName: "Lisinopril",
+        ndc: "12345-0001-01",
+        manufacturer: "Generic Pharma",
+        dosageForm: "Tablet",
+        strength: "10mg",
+        currentStock: 5,
+        reorderPoint: 20,
+        maxStock: 100,
+        unit: "bottles",
+        expiryDate: "2024-06-15",
+        location: "Shelf A-1",
+        lotNumber: "LOT123456",
+        costPerUnit: 15.50
+      },
+      {
+        Id: 2,
+        drugName: "Metformin",
+        ndc: "12345-0002-01",
+        manufacturer: "Diabetes Care Inc",
+        dosageForm: "Tablet",
+        strength: "500mg",
+        currentStock: 45,
+        reorderPoint: 30,
+        maxStock: 200,
+        unit: "bottles",
+        expiryDate: "2025-01-20",
+        location: "Shelf B-2",
+        lotNumber: "LOT789012",
+        costPerUnit: 12.75
+      },
+      {
+        Id: 3,
+        drugName: "Amoxicillin",
+        ndc: "12345-0003-01",
+        manufacturer: "Antibiotic Labs",
+        dosageForm: "Capsule",
+        strength: "250mg",
+        currentStock: 0,
+        reorderPoint: 15,
+        maxStock: 75,
+        unit: "bottles",
+        expiryDate: "2024-03-10",
+        location: "Shelf C-1",
+        lotNumber: "LOT345678",
+        costPerUnit: 18.25
+      },
+      {
+        Id: 4,
+        drugName: "Simvastatin",
+        ndc: "12345-0004-01",
+        manufacturer: "Cardio Meds",
+        dosageForm: "Tablet",
+        strength: "20mg",
+        currentStock: 25,
+        reorderPoint: 10,
+        maxStock: 60,
+        unit: "bottles",
+        expiryDate: "2024-04-30",
+        location: "Shelf A-3",
+        lotNumber: "LOT901234",
+        costPerUnit: 22.00
+      },
+      {
+        Id: 5,
+        drugName: "Hydrochlorothiazide",
+        ndc: "12345-0005-01",
+        manufacturer: "Diuretic Corp",
+        dosageForm: "Tablet",
+        strength: "25mg",
+        currentStock: 8,
+        reorderPoint: 12,
+        maxStock: 50,
+        unit: "bottles",
+        expiryDate: "2024-05-15",
+        location: "Shelf B-1",
+        lotNumber: "LOT567890",
+        costPerUnit: 9.75
+      }
+    ]
+    
+    return mockInventory
   }
 
+  async getInventoryStats() {
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    const inventory = await this.getInventory()
+    const now = new Date()
+    
+    const stats = {
+      totalItems: inventory.length,
+      lowStock: inventory.filter(item => item.currentStock <= item.reorderPoint).length,
+      outOfStock: inventory.filter(item => item.currentStock === 0).length,
+      expiringSoon: inventory.filter(item => {
+        const daysUntilExpiry = Math.ceil((new Date(item.expiryDate) - now) / (1000 * 60 * 60 * 24))
+        return daysUntilExpiry <= 90 && daysUntilExpiry > 0
+      }).length,
+      totalValue: inventory.reduce((sum, item) => sum + (item.currentStock * item.costPerUnit), 0)
+    }
+    
+    return stats
+  }
+
+  async updateStock(drugId, newStock) {
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    if (!drugId || newStock < 0) {
+      throw new Error("Invalid drug ID or stock quantity")
+    }
+    
+    return {
+      success: true,
+      message: "Stock updated successfully"
+    }
+  }
+
+  async setReorderPoint(drugId, reorderPoint) {
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    if (!drugId || reorderPoint < 0) {
+      throw new Error("Invalid drug ID or reorder point")
+    }
+    
+    return {
+      success: true,
+      message: "Reorder point updated successfully"
+    }
+  }
+
+  async checkLowStock() {
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    const inventory = await this.getInventory()
+    return inventory.filter(item => item.currentStock <= item.reorderPoint)
+  }
+
+  async getExpiringDrugs(days = 90) {
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    const inventory = await this.getInventory()
+    const now = new Date()
+    
+    return inventory.filter(item => {
+      const daysUntilExpiry = Math.ceil((new Date(item.expiryDate) - now) / (1000 * 60 * 60 * 24))
+      return daysUntilExpiry <= days && daysUntilExpiry > 0
+    })
+  }
   async getAll() {
     await new Promise(resolve => setTimeout(resolve, 300))
     return [...this.medications]
@@ -159,8 +312,9 @@ class MedicationService {
       (!med.endDate || new Date(med.endDate) > new Date())
     )
     return activeMedications.length
-  }
-async searchDrugs(query) {
+}
+  
+  async searchDrugs(query) {
     await new Promise(resolve => setTimeout(resolve, 200))
     
     // Mock drug database for search
