@@ -135,18 +135,39 @@ const bedService = {
 getStats: async () => {
     return new Promise((resolve) => {
       setTimeout(() => {
-        // Enhanced null safety for bed status filtering
-        const validBeds = beds.filter(bed => bed && typeof bed === 'object');
+        // Enhanced null safety for bed status filtering with comprehensive validation
+        const validBeds = beds.filter(bed => 
+          bed && 
+          typeof bed === 'object' && 
+          bed.hasOwnProperty('bedNumber') && 
+          bed.hasOwnProperty('status')
+        );
+        
         const stats = {
           total: validBeds.length,
-          available: validBeds.filter(b => (b.status?.toString() || '') === 'available').length,
-          occupied: validBeds.filter(b => (b.status?.toString() || '').startsWith('occupied')).length,
-          critical: validBeds.filter(b => (b.status?.toString() || '') === 'occupied_critical').length,
-          maintenance: validBeds.filter(b => (b.status?.toString() || '') === 'maintenance').length,
-          outOfService: validBeds.filter(b => (b.status?.toString() || '') === 'out_of_service').length
+          available: validBeds.filter(b => {
+            const status = b.status?.toString?.() || '';
+            return status === 'available';
+          }).length,
+          occupied: validBeds.filter(b => {
+            const status = b.status?.toString?.() || '';
+            return status && typeof status === 'string' && status.startsWith('occupied');
+          }).length,
+          critical: validBeds.filter(b => {
+            const status = b.status?.toString?.() || '';
+            return status === 'occupied_critical';
+          }).length,
+          maintenance: validBeds.filter(b => {
+            const status = b.status?.toString?.() || '';
+            return status === 'maintenance';
+          }).length,
+          outOfService: validBeds.filter(b => {
+            const status = b.status?.toString?.() || '';
+            return status === 'out_of_service';
+          }).length
         }
-        stats.occupancyRate = Math.round((stats.occupied / stats.total) * 100) || 0
-        resolve(stats)
+        stats.occupancyRate = stats.total > 0 ? Math.round((stats.occupied / stats.total) * 100) : 0;
+        resolve(stats);
       }, 100)
     })
   },
