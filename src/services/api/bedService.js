@@ -132,16 +132,16 @@ const bedService = {
   },
 
   // Get bed statistics
-  getStats: async () => {
+getStats: async () => {
     return new Promise((resolve) => {
       setTimeout(() => {
         const stats = {
           total: beds.length,
-          available: beds.filter(b => b.status === 'available').length,
-          occupied: beds.filter(b => b.status.startsWith('occupied')).length,
-          critical: beds.filter(b => b.status === 'occupied_critical').length,
-          maintenance: beds.filter(b => b.status === 'maintenance').length,
-          outOfService: beds.filter(b => b.status === 'out_of_service').length
+          available: beds.filter(b => (b.status || '') === 'available').length,
+          occupied: beds.filter(b => (b.status || '').startsWith('occupied')).length,
+          critical: beds.filter(b => (b.status || '') === 'occupied_critical').length,
+          maintenance: beds.filter(b => (b.status || '') === 'maintenance').length,
+          outOfService: beds.filter(b => (b.status || '') === 'out_of_service').length
         }
         stats.occupancyRate = Math.round((stats.occupied / stats.total) * 100) || 0
         resolve(stats)
