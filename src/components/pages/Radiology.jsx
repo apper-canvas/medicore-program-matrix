@@ -32,8 +32,24 @@ const Radiology = () => {
   const [windowLevel, setWindowLevel] = useState({ window: 400, level: 40 });
   const [measurements, setMeasurements] = useState([]);
   const [activeTool, setActiveTool] = useState('pan');
-  const [isFullscreen, setIsFullscreen] = useState(false);
+const [isFullscreen, setIsFullscreen] = useState(false);
   const canvasRef = useRef(null);
+  
+  // Multi-planar reconstruction state
+  const [mprMode, setMprMode] = useState(false);
+  const [activePlane, setActivePlane] = useState('axial');
+  const [syncPlanes, setSyncPlanes] = useState(true);
+  const [currentSlices, setCurrentSlices] = useState({
+    axial: 0,
+    sagittal: 0,
+    coronal: 0
+  });
+  const [crossReferenceLines, setCrossReferenceLines] = useState(true);
+  
+  // Canvas refs for each plane
+  const axialCanvasRef = useRef(null);
+  const sagittalCanvasRef = useRef(null);
+  const coronalCanvasRef = useRef(null);
   const containerRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -273,8 +289,16 @@ const openViewer = useCallback(async (orderId) => {
     toast.success('Comparison mode deactivated');
   }, []);
 
-const loadDicomImage = useCallback((imageData, isPrior = false) => {
-    const canvas = isPrior ? priorCanvasRef.current : canvasRef.current;
+const loadDicomImage = useCallback((imageData, isPrior = false, plane = 'axial') => {
+    let canvas;
+    if (mprMode && !isPrior) {
+      canvas = plane === 'axial' ? axialCanvasRef.current : 
+               plane === 'sagittal' ? sagittalCanvasRef.current : 
+               coronalCanvasRef.current;
+    } else {
+      canvas = isPrior ? priorCanvasRef.current : canvasRef.current;
+    }
+    
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
@@ -302,6 +326,11 @@ const loadDicomImage = useCallback((imageData, isPrior = false) => {
       
       ctx.restore();
       
+      // Draw cross-reference lines in MPR mode
+      if (mprMode && crossReferenceLines && !isPrior) {
+        drawCrossReferenceLines(ctx, plane);
+      }
+      
       // Draw annotations (only on current study)
       if (!isPrior) {
         drawAnnotations(ctx);
@@ -314,7 +343,45 @@ const loadDicomImage = useCallback((imageData, isPrior = false) => {
     };
     
     img.src = imageData.url;
-  }, [zoomLevel, panOffset, windowLevel, measurements, priorZoomLevel, priorPanOffset, priorWindowLevel, currentMeasurement]);
+  }, [zoomLevel, panOffset, windowLevel, measurements, priorZoomLevel, priorPanOffset, priorWindowLevel, currentMeasurement, mprMode, crossReferenceLines]);
+
+  // Draw cross-reference lines showing slice positions
+  const drawCrossReferenceLines = useCallback((ctx, plane) => {
+    ctx.save();
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    
+    const centerX = ctx.canvas.width / 2;
+    const centerY = ctx.canvas.height / 2;
+    
+    if (plane === 'axial') {
+      // Show sagittal and coronal slice positions
+      ctx.beginPath();
+      ctx.moveTo(centerX, 0);
+      ctx.lineTo(centerX, ctx.canvas.height);
+      ctx.stroke();
+      
+      ctx.beginPath();
+      ctx.moveTo(0, centerY);
+      ctx.lineTo(ctx.canvas.width, centerY);
+      ctx.stroke();
+    } else if (plane === 'sagittal') {
+      // Show axial and coronal slice positions
+      ctx.beginPath();
+      ctx.moveTo(0, centerY);
+      ctx.lineTo(ctx.canvas.width, centerY);
+      ctx.stroke();
+    } else if (plane === 'coronal') {
+      // Show axial and sagittal slice positions
+      ctx.beginPath();
+      ctx.moveTo(centerX, 0);
+      ctx.lineTo(centerX, ctx.canvas.height);
+      ctx.stroke();
+    }
+    
+    ctx.restore();
+  }, [currentSlices]);
 
 const drawAnnotations = useCallback((ctx) => {
     ctx.save();
@@ -469,13 +536,66 @@ const drawAnnotations = useCallback((ctx) => {
     }
     
     ctx.restore();
-  }, [currentMeasurement]);
+}, [currentMeasurement]);
+
+  // MPR-specific functions
+  const toggleMprMode = useCallback(() => {
+    setMprMode(!mprMode);
+    if (!mprMode) {
+      // Initialize MPR mode
+      setCurrentSlices({
+        axial: Math.floor((selectedStudy?.images?.length || 1) / 2),
+        sagittal: Math.floor((selectedStudy?.images?.length || 1) / 2),
+        coronal: Math.floor((selectedStudy?.images?.length || 1) / 2)
+      });
+    }
+    toast.info(mprMode ? 'Multi-planar view disabled' : 'Multi-planar view enabled');
+  }, [mprMode, selectedStudy]);
+
+  const handlePlaneSliceChange = useCallback((plane, direction) => {
+    if (!selectedStudy?.images) return;
+    
+    const maxSlice = selectedStudy.images.length - 1;
+    setCurrentSlices(prev => {
+      const newSlices = { ...prev };
+      const currentSlice = prev[plane];
+      
+      if (direction === 'next' && currentSlice < maxSlice) {
+        newSlices[plane] = currentSlice + 1;
+      } else if (direction === 'prev' && currentSlice > 0) {
+        newSlices[plane] = currentSlice - 1;
+      }
+      
+      // Sync other planes if enabled
+      if (syncPlanes && plane === activePlane) {
+        Object.keys(newSlices).forEach(p => {
+          if (p !== plane) {
+            newSlices[p] = newSlices[plane];
+          }
+        });
+      }
+      
+      return newSlices;
+    });
+  }, [selectedStudy, syncPlanes, activePlane]);
+
+  const getPlaneImages = useCallback((plane) => {
+    if (!selectedStudy?.images) return [];
+    
+    // Filter images by plane type
+    return selectedStudy.images.filter(img => {
+      const series = img.seriesDescription.toLowerCase();
+      if (plane === 'axial') return series.includes('axial') || series.includes('transverse');
+      if (plane === 'sagittal') return series.includes('sagittal');
+      if (plane === 'coronal') return series.includes('coronal');
+      return false;
+    });
+  }, [selectedStudy]);
 
 // Additional state for enhanced annotations
   const [selectedAnnotation, setSelectedAnnotation] = useState(null);
   const [editingText, setEditingText] = useState(null);
   const [textInput, setTextInput] = useState('');
-
 const handleCanvasMouseDown = useCallback((e, isPrior = false) => {
     const canvas = isPrior ? priorCanvasRef.current : canvasRef.current;
     if (!canvas) return;
@@ -691,9 +811,26 @@ const resetView = useCallback((isPrior = false) => {
   // Update canvas when image changes
 useEffect(() => {
     if (selectedStudy && selectedStudy.images && selectedStudy.images[currentStudyImage]) {
-      loadDicomImage(selectedStudy.images[currentStudyImage]);
+      if (mprMode) {
+        // Load images for all planes
+        const axialImages = getPlaneImages('axial');
+        const sagittalImages = getPlaneImages('sagittal');
+        const coronalImages = getPlaneImages('coronal');
+        
+        if (axialImages[currentSlices.axial]) {
+          loadDicomImage(axialImages[currentSlices.axial], false, 'axial');
+        }
+        if (sagittalImages[currentSlices.sagittal]) {
+          loadDicomImage(sagittalImages[currentSlices.sagittal], false, 'sagittal');
+        }
+        if (coronalImages[currentSlices.coronal]) {
+          loadDicomImage(coronalImages[currentSlices.coronal], false, 'coronal');
+        }
+      } else {
+        loadDicomImage(selectedStudy.images[currentStudyImage]);
+      }
     }
-  }, [selectedStudy, currentStudyImage, loadDicomImage]);
+  }, [selectedStudy, currentStudyImage, loadDicomImage, mprMode, currentSlices, getPlaneImages]);
 
   useEffect(() => {
     if (priorStudy && priorStudy.images && priorStudy.images[priorStudyImage]) {
@@ -1606,6 +1743,65 @@ return (
             <div className="flex flex-1 overflow-hidden">
               {/* Tool Panel */}
 <div className="bg-gray-800 text-white p-4 w-64 space-y-4">
+                {/* Multi-planar Reconstruction Controls */}
+                <div>
+                  <h4 className="font-medium mb-2">Multi-planar Reconstruction</h4>
+                  <div className="space-y-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={toggleMprMode}
+                      className={`w-full ${mprMode ? 'bg-primary-600' : ''}`}
+                    >
+                      <ApperIcon name="Layout" size={16} className="mr-1" />
+                      {mprMode ? 'Exit MPR' : 'Enable MPR'}
+                    </Button>
+                    
+                    {mprMode && (
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="syncPlanes"
+                            checked={syncPlanes}
+                            onChange={(e) => setSyncPlanes(e.target.checked)}
+                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                          />
+                          <label htmlFor="syncPlanes" className="text-xs">Sync Planes</label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="crossLines"
+                            checked={crossReferenceLines}
+                            onChange={(e) => setCrossReferenceLines(e.target.checked)}
+                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                          />
+                          <label htmlFor="crossLines" className="text-xs">Cross-reference Lines</label>
+                        </div>
+                        
+                        {/* Plane Selection */}
+                        <div className="mt-3">
+                          <label className="text-xs font-medium">Active Plane:</label>
+                          <div className="flex space-x-1 mt-1">
+                            {['axial', 'sagittal', 'coronal'].map(plane => (
+                              <button
+                                key={plane}
+                                onClick={() => setActivePlane(plane)}
+                                className={`px-2 py-1 text-xs rounded capitalize ${
+                                  activePlane === plane ? 'bg-primary-600' : 'bg-gray-600 hover:bg-gray-500'
+                                }`}
+                              >
+                                {plane}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {/* Comparison Controls */}
                 <div>
                   <h4 className="font-medium mb-2">Study Comparison</h4>
@@ -1849,8 +2045,134 @@ return (
               </div>
 
 {/* Image Viewer */}
-              <div className={`flex-1 bg-black flex ${comparisonMode ? 'flex-col' : 'items-center justify-center'} overflow-hidden`}>
-                {comparisonMode ? (
+<div className={`flex-1 bg-black flex ${
+                mprMode ? 'flex-col' : 
+                comparisonMode ? 'flex-col' : 'items-center justify-center'
+              } overflow-hidden`}>
+                {mprMode ? (
+                  <>
+                    {/* Multi-planar view */}
+                    <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-1">
+                      {/* Axial Plane */}
+                      <div className="relative bg-black border border-gray-600">
+                        <div className="absolute top-0 left-0 bg-blue-600 text-white text-xs px-2 py-1 z-10">
+                          Axial ({currentSlices.axial + 1}/{getPlaneImages('axial').length})
+                        </div>
+                        <div className="w-full h-full flex items-center justify-center">
+                          <canvas
+                            ref={axialCanvasRef}
+                            onMouseDown={(e) => handleCanvasMouseDown(e, false)}
+                            onMouseMove={(e) => handleCanvasMouseMove(e, false)}
+                            onMouseUp={handleCanvasMouseUp}
+                            onWheel={(e) => handleWheel(e, false)}
+                            className="max-w-full max-h-full cursor-crosshair"
+                            style={{
+                              cursor: activeTool === 'pan' ? 'grab' : activeTool === 'zoom' ? 'zoom-in' : 'crosshair'
+                            }}
+                          />
+                        </div>
+                        <div className="absolute bottom-2 left-2 flex space-x-1">
+                          <button
+                            onClick={() => handlePlaneSliceChange('axial', 'prev')}
+                            className="bg-gray-800 text-white p-1 rounded hover:bg-gray-700"
+                            disabled={currentSlices.axial === 0}
+                          >
+                            <ApperIcon name="ChevronUp" size={12} />
+                          </button>
+                          <button
+                            onClick={() => handlePlaneSliceChange('axial', 'next')}
+                            className="bg-gray-800 text-white p-1 rounded hover:bg-gray-700"
+                            disabled={currentSlices.axial >= getPlaneImages('axial').length - 1}
+                          >
+                            <ApperIcon name="ChevronDown" size={12} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Sagittal Plane */}
+                      <div className="relative bg-black border border-gray-600">
+                        <div className="absolute top-0 left-0 bg-green-600 text-white text-xs px-2 py-1 z-10">
+                          Sagittal ({currentSlices.sagittal + 1}/{getPlaneImages('sagittal').length})
+                        </div>
+                        <div className="w-full h-full flex items-center justify-center">
+                          <canvas
+                            ref={sagittalCanvasRef}
+                            onMouseDown={(e) => handleCanvasMouseDown(e, false)}
+                            onMouseMove={(e) => handleCanvasMouseMove(e, false)}
+                            onMouseUp={handleCanvasMouseUp}
+                            onWheel={(e) => handleWheel(e, false)}
+                            className="max-w-full max-h-full cursor-crosshair"
+                            style={{
+                              cursor: activeTool === 'pan' ? 'grab' : activeTool === 'zoom' ? 'zoom-in' : 'crosshair'
+                            }}
+                          />
+                        </div>
+                        <div className="absolute bottom-2 left-2 flex space-x-1">
+                          <button
+                            onClick={() => handlePlaneSliceChange('sagittal', 'prev')}
+                            className="bg-gray-800 text-white p-1 rounded hover:bg-gray-700"
+                            disabled={currentSlices.sagittal === 0}
+                          >
+                            <ApperIcon name="ChevronLeft" size={12} />
+                          </button>
+                          <button
+                            onClick={() => handlePlaneSliceChange('sagittal', 'next')}
+                            className="bg-gray-800 text-white p-1 rounded hover:bg-gray-700"
+                            disabled={currentSlices.sagittal >= getPlaneImages('sagittal').length - 1}
+                          >
+                            <ApperIcon name="ChevronRight" size={12} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Coronal Plane */}
+                      <div className="relative bg-black border border-gray-600">
+                        <div className="absolute top-0 left-0 bg-red-600 text-white text-xs px-2 py-1 z-10">
+                          Coronal ({currentSlices.coronal + 1}/{getPlaneImages('coronal').length})
+                        </div>
+                        <div className="w-full h-full flex items-center justify-center">
+                          <canvas
+                            ref={coronalCanvasRef}
+                            onMouseDown={(e) => handleCanvasMouseDown(e, false)}
+                            onMouseMove={(e) => handleCanvasMouseMove(e, false)}
+                            onMouseUp={handleCanvasMouseUp}
+                            onWheel={(e) => handleWheel(e, false)}
+                            className="max-w-full max-h-full cursor-crosshair"
+                            style={{
+                              cursor: activeTool === 'pan' ? 'grab' : activeTool === 'zoom' ? 'zoom-in' : 'crosshair'
+                            }}
+                          />
+                        </div>
+                        <div className="absolute bottom-2 left-2 flex space-x-1">
+                          <button
+                            onClick={() => handlePlaneSliceChange('coronal', 'prev')}
+                            className="bg-gray-800 text-white p-1 rounded hover:bg-gray-700"
+                            disabled={currentSlices.coronal === 0}
+                          >
+                            <ApperIcon name="ChevronUp" size={12} />
+                          </button>
+                          <button
+                            onClick={() => handlePlaneSliceChange('coronal', 'next')}
+                            className="bg-gray-800 text-white p-1 rounded hover:bg-gray-700"
+                            disabled={currentSlices.coronal >= getPlaneImages('coronal').length - 1}
+                          >
+                            <ApperIcon name="ChevronDown" size={12} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 3D Preview/Info Panel */}
+                      <div className="relative bg-gray-900 border border-gray-600 flex flex-col items-center justify-center text-white">
+                        <ApperIcon name="Layers3" size={48} className="text-gray-400 mb-2" />
+                        <div className="text-sm font-medium">3D Volume</div>
+                        <div className="text-xs text-gray-400 mt-1">Multi-planar View</div>
+                        <div className="text-xs text-gray-400 mt-2 text-center px-4">
+                          {selectedStudy?.studyDescription}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : comparisonMode ? (
                   <>
                     {/* Current Study */}
                     <div className="flex-1 flex flex-col border-b border-gray-600">
@@ -1908,7 +2230,7 @@ return (
               </div>
 
 {/* Image Navigation */}
-              {selectedStudy.images && selectedStudy.images.length > 1 && (
+{selectedStudy.images && selectedStudy.images.length > 1 && !mprMode && (
                 <div className="bg-gray-800 text-white p-4 w-48">
                   <h4 className="font-medium mb-2">Current Study Images</h4>
                   <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -1947,6 +2269,69 @@ return (
                   )}
                 </div>
               )}
+
+              {/* MPR Series Navigator */}
+              {mprMode && selectedStudy.images && (
+                <div className="bg-gray-800 text-white p-4 w-48">
+                  <h4 className="font-medium mb-2">MPR Series</h4>
+                  
+                  <div className="space-y-3">
+                    {/* Axial Series */}
+                    <div>
+                      <div className="text-xs font-medium text-blue-400 mb-1">Axial Series</div>
+                      <div className="space-y-1 max-h-24 overflow-y-auto">
+                        {getPlaneImages('axial').slice(0, 3).map((image, index) => (
+                          <div
+                            key={`axial-${index}`}
+                            onClick={() => setCurrentSlices(prev => ({ ...prev, axial: index }))}
+                            className={`p-1 text-xs rounded cursor-pointer ${
+                              currentSlices.axial === index ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
+                            }`}
+                          >
+                            Axial {index + 1}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Sagittal Series */}
+                    <div>
+                      <div className="text-xs font-medium text-green-400 mb-1">Sagittal Series</div>
+                      <div className="space-y-1 max-h-24 overflow-y-auto">
+                        {getPlaneImages('sagittal').slice(0, 3).map((image, index) => (
+                          <div
+                            key={`sagittal-${index}`}
+                            onClick={() => setCurrentSlices(prev => ({ ...prev, sagittal: index }))}
+                            className={`p-1 text-xs rounded cursor-pointer ${
+                              currentSlices.sagittal === index ? 'bg-green-600' : 'bg-gray-700 hover:bg-gray-600'
+                            }`}
+                          >
+                            Sagittal {index + 1}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Coronal Series */}
+                    <div>
+                      <div className="text-xs font-medium text-red-400 mb-1">Coronal Series</div>
+                      <div className="space-y-1 max-h-24 overflow-y-auto">
+                        {getPlaneImages('coronal').slice(0, 3).map((image, index) => (
+                          <div
+                            key={`coronal-${index}`}
+                            onClick={() => setCurrentSlices(prev => ({ ...prev, coronal: index }))}
+                            className={`p-1 text-xs rounded cursor-pointer ${
+                              currentSlices.coronal === index ? 'bg-red-600' : 'bg-gray-700 hover:bg-gray-600'
+                            }`}
+                          >
+                            Coronal {index + 1}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Bottom Controls */}
@@ -1961,7 +2346,19 @@ return (
               </div>
               
 <div className="flex items-center space-x-2">
-                {selectedStudy.images && selectedStudy.images.length > 1 && (
+                {mprMode ? (
+                  <div className="flex items-center space-x-4">
+                    <div className="text-sm text-gray-300">
+                      MPR Mode - {activePlane.charAt(0).toUpperCase() + activePlane.slice(1)} Active
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-gray-400">Slice:</span>
+                      <span className="text-sm text-white">
+                        {currentSlices[activePlane] + 1} / {getPlaneImages(activePlane).length}
+                      </span>
+                    </div>
+                  </div>
+                ) : selectedStudy.images && selectedStudy.images.length > 1 && (
                   <>
                     <Button
                       variant="ghost"
