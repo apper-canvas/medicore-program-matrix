@@ -588,6 +588,169 @@ async createOrder(orderData) {
       { status: "Rejected", description: "Specimen rejected", color: "rejected" }
     ];
 }
+
+  // Batch Processing Methods
+  async processBatch(specimenIds) {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    const processedOrders = [];
+    for (const specimenId of specimenIds) {
+      const order = this.orders.find(o => o.Id === parseInt(specimenId));
+      if (order && order.collectionStatus === "Received") {
+        // Run quality control checks
+        const qcResult = this.validateQualityControl(order);
+        if (qcResult.passed) {
+          order.collectionStatus = "Processing";
+          order.processingStarted = new Date().toISOString();
+          order.qcResults = qcResult;
+          processedOrders.push(order);
+        } else {
+          // Auto-reject specimens that fail QC
+          order.collectionStatus = "Rejected";
+          order.rejectionReason = `QC Failed: ${qcResult.failureReasons.join(', ')}`;
+          order.rejectionDate = new Date().toISOString();
+        }
+      }
+    }
+    
+    this.updateProcessingQueue();
+    return processedOrders;
+  }
+
+  async completeBatch(specimenIds, resultsData) {
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    const completedOrders = [];
+    for (const specimenId of specimenIds) {
+      const order = this.orders.find(o => o.Id === parseInt(specimenId));
+      if (order && order.collectionStatus === "Processing") {
+        order.collectionStatus = "Completed";
+        order.resultsStatus = "Available";
+        order.processingCompleted = new Date().toISOString();
+        order.results = resultsData[specimenId] || {};
+        order.processingTime = this.calculateActualProcessingTime(order);
+        completedOrders.push(order);
+      }
+    }
+    
+    this.updateProcessingQueue();
+    return completedOrders;
+  }
+
+  async rejectBatch(specimenIds, rejectionReason) {
+    await new Promise(resolve => setTimeout(resolve, 400));
+    
+    const rejectedOrders = [];
+    const reOrders = [];
+    
+    for (const specimenId of specimenIds) {
+      const order = this.orders.find(o => o.Id === parseInt(specimenId));
+      if (order) {
+        // Reject original order
+        order.collectionStatus = "Rejected";
+        order.rejectionReason = rejectionReason;
+        order.rejectionDate = new Date().toISOString();
+        rejectedOrders.push(order);
+        
+        // Create reorder
+        const maxId = Math.max(...this.orders.map(o => o.Id), 0);
+        const reOrder = {
+          ...order,
+          Id: maxId + rejectedOrders.length,
+          collectionStatus: "Pending",
+          originalOrderId: order.Id,
+          isReorder: true,
+          reorderReason: rejectionReason,
+          orderDate: new Date().toISOString(),
+          barcode: null,
+          statusHistory: []
+        };
+        
+        this.orders.push(reOrder);
+        reOrders.push(reOrder);
+      }
+    }
+    
+    this.updateProcessingQueue();
+    return { rejectedOrders, reOrders };
+  }
+
+  validateQualityControl(order) {
+    // Simulate QC validation
+    const qcChecks = [
+      { name: "Specimen Volume", passed: Math.random() > 0.1 },
+      { name: "Specimen Integrity", passed: Math.random() > 0.05 },
+      { name: "Label Verification", passed: Math.random() > 0.02 },
+      { name: "Temperature Control", passed: Math.random() > 0.03 },
+      { name: "Chain of Custody", passed: Math.random() > 0.01 }
+    ];
+    
+    const failedChecks = qcChecks.filter(check => !check.passed);
+    
+    return {
+      passed: failedChecks.length === 0,
+      checks: qcChecks,
+      failureReasons: failedChecks.map(check => check.name),
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  async getBatchResults(specimenIds) {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    const results = {};
+    for (const specimenId of specimenIds) {
+      const order = this.orders.find(o => o.Id === parseInt(specimenId));
+      if (order) {
+        // Generate template results for each test
+        results[specimenId] = {
+          orderId: order.Id,
+          tests: order.tests?.map(test => ({
+            testId: test.Id,
+            testName: test.name,
+            result: "",
+            unit: this.getTestUnit(test),
+            normalRange: test.normalRange,
+            flag: "Normal"
+          })) || []
+        };
+      }
+    }
+    
+    return results;
+  }
+
+  getTestUnit(test) {
+    // Return appropriate unit based on test type
+    const unitMap = {
+      "CBC": "cells/μL",
+      "BMP": "mg/dL",
+      "LIPID": "mg/dL",
+      "TFT": "μIU/mL",
+      "LFT": "U/L",
+      "UA": "various",
+      "HbA1C": "%",
+      "TnI": "ng/mL",
+      "VIT-D": "ng/mL"
+    };
+    
+    return unitMap[test.code] || "units";
+  }
+
+  calculateActualProcessingTime(order) {
+    if (!order.processingStarted || !order.processingCompleted) {
+      return null;
+    }
+    
+    const startTime = new Date(order.processingStarted);
+    const endTime = new Date(order.processingCompleted);
+    const diffMinutes = Math.ceil((endTime - startTime) / (1000 * 60));
+    
+    return {
+      minutes: diffMinutes,
+      formatted: `${Math.floor(diffMinutes / 60)}h ${diffMinutes % 60}m`
+    };
+  }
 }
 
 export default new LaboratoryService();

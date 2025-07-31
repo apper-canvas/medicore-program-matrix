@@ -26,8 +26,12 @@ const [rejectionReason, setRejectionReason] = useState("")
   const [rejectionModal, setRejectionModal] = useState({ isOpen: false, specimenId: null })
   // Additional state for test management
   const [tests, setTests] = useState([])
-  const [selectedCategory, setSelectedCategory] = useState("All")
+const [selectedCategory, setSelectedCategory] = useState("All")
   const [selectedTests, setSelectedTests] = useState([])
+  const [selectedSpecimens, setSelectedSpecimens] = useState([])
+  const [showBatchResults, setShowBatchResults] = useState(false)
+  const [batchResults, setBatchResults] = useState({})
+  const [processingBatch, setProcessingBatch] = useState(false)
   const [orderForm, setOrderForm] = useState({
     patientId: "",
     priority: "Routine",
@@ -234,8 +238,7 @@ const getPriorityColor = (priority) => {
       default: return "Clock"
     }
   }
-
-  const loadProcessingQueue = async () => {
+const loadProcessingQueue = async () => {
     try {
       const queue = await laboratoryService.getProcessingQueue()
       const stats = laboratoryService.getQueueStatistics()
@@ -244,6 +247,88 @@ const getPriorityColor = (priority) => {
     } catch (error) {
       console.error('Error loading processing queue:', error)
       toast.error('Failed to load processing queue')
+    }
+  }
+
+  const handleSpecimenSelection = (specimenId, checked) => {
+    setSelectedSpecimens(prev => 
+      checked 
+        ? [...prev, specimenId]
+        : prev.filter(id => id !== specimenId)
+    )
+  }
+
+  const handleSelectAllSpecimens = (checked) => {
+    setSelectedSpecimens(checked ? processingQueue.map(item => item.Id) : [])
+  }
+
+  const handleBatchProcess = async () => {
+    if (selectedSpecimens.length === 0) {
+      toast.warning('Please select specimens to process')
+      return
+    }
+
+    setProcessingBatch(true)
+    try {
+      await laboratoryService.processBatch(selectedSpecimens)
+      toast.success(`Started processing ${selectedSpecimens.length} specimens`)
+      setSelectedSpecimens([])
+      await loadProcessingQueue()
+    } catch (error) {
+      console.error('Error processing batch:', error)
+      toast.error('Failed to process batch')
+    } finally {
+      setProcessingBatch(false)
+    }
+  }
+
+  const handleBatchComplete = async () => {
+    if (selectedSpecimens.length === 0) {
+      toast.warning('Please select specimens to complete')
+      return
+    }
+
+    try {
+      const results = await laboratoryService.getBatchResults(selectedSpecimens)
+      setBatchResults(results)
+      setShowBatchResults(true)
+    } catch (error) {
+      console.error('Error loading batch results:', error)
+      toast.error('Failed to load batch results')
+    }
+  }
+
+  const handleBatchReject = async () => {
+    if (selectedSpecimens.length === 0) {
+      toast.warning('Please select specimens to reject')
+      return
+    }
+
+    const reason = prompt('Enter rejection reason:')
+    if (!reason) return
+
+    try {
+      await laboratoryService.rejectBatch(selectedSpecimens, reason)
+      toast.success(`Rejected ${selectedSpecimens.length} specimens`)
+      setSelectedSpecimens([])
+      await loadProcessingQueue()
+    } catch (error) {
+      console.error('Error rejecting batch:', error)
+      toast.error('Failed to reject batch')
+    }
+  }
+
+  const handleSaveBatchResults = async () => {
+    try {
+      await laboratoryService.completeBatch(selectedSpecimens, batchResults)
+      toast.success(`Completed processing for ${selectedSpecimens.length} specimens`)
+      setShowBatchResults(false)
+      setBatchResults({})
+      setSelectedSpecimens([])
+      await loadProcessingQueue()
+    } catch (error) {
+      console.error('Error saving batch results:', error)
+      toast.error('Failed to save batch results')
     }
   }
 
@@ -256,7 +341,6 @@ const getPriorityColor = (priority) => {
     const matchesStatus = selectedStatus === "All" || order.collectionStatus === selectedStatus
     return matchesSearch && matchesStatus
   })
-
   if (loading) return <Loading />
   if (error) return <Error message={error} onRetry={loadData} />
   return (
