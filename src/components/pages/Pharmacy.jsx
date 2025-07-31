@@ -16,10 +16,10 @@ import medicationService from "@/services/api/medicationService"
 import allergyService from "@/services/api/allergyService"
 
 const Pharmacy = () => {
-  const [activeTab, setActiveTab] = useState("queue")
+const [activeTab, setActiveTab] = useState("queue")
   const [prescriptions, setPrescriptions] = useState([])
   const [filteredPrescriptions, setFilteredPrescriptions] = useState([])
-const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedPrescription, setSelectedPrescription] = useState(null)
@@ -32,6 +32,17 @@ const [loading, setLoading] = useState(true)
   const [inventorySort, setInventorySort] = useState("name")
   const [selectedDrug, setSelectedDrug] = useState(null)
   const [showReorderModal, setShowReorderModal] = useState(false)
+
+  // Disposal states
+  const [showDisposalModal, setShowDisposalModal] = useState(false)
+  const [disposalData, setDisposalData] = useState({
+    quantity: "",
+    disposalReason: "Expired medication",
+    disposalMethod: "DEA approved incinerator",
+    witness: "",
+    disposedBy: "Current Pharmacist",
+    complianceNotes: ""
+  })
 
   // Modal states
   const [showVerificationModal, setShowVerificationModal] = useState(false)
@@ -191,11 +202,46 @@ console.error("Failed to load workflow stats:", err)
   }
 
   function getExpiryStatusColor(expiryDate) {
-    const daysUntilExpiry = Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24))
+const daysUntilExpiry = Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24))
     if (daysUntilExpiry < 0) return "error"
     if (daysUntilExpiry <= 30) return "error"
     if (daysUntilExpiry <= 90) return "warning"
     return "success"
+  }
+
+  const handleDisposeMedication = async (item) => {
+    setSelectedDrug(item)
+    setDisposalData({
+      quantity: item.currentStock.toString(),
+      disposalReason: "Expired medication",
+      disposalMethod: "DEA approved incinerator",
+      witness: "",
+      disposedBy: "Current Pharmacist",
+      complianceNotes: "DEA Form 41 to be completed"
+    })
+    setShowDisposalModal(true)
+  }
+
+  const handleCompleteDisposal = async () => {
+    try {
+      const disposalInfo = {
+        ...disposalData,
+        drugName: selectedDrug.drugName,
+        lotNumber: selectedDrug.lotNumber,
+        unit: selectedDrug.unit,
+        expiryDate: selectedDrug.expiryDate,
+        location: selectedDrug.location,
+        costPerUnit: selectedDrug.costPerUnit,
+        quantity: parseInt(disposalData.quantity)
+      }
+
+      await medicationService.disposeMedication(selectedDrug.Id, disposalInfo)
+      await loadInventory()
+      setShowDisposalModal(false)
+      toast.success("Medication disposed successfully with compliance documentation")
+    } catch (err) {
+      toast.error("Failed to dispose medication")
+    }
   }
 
   const filterPrescriptions = () => {
@@ -400,7 +446,7 @@ const tabs = [
           <p className="text-gray-600 mt-1">E-prescription management, verification, and dispensing workflow</p>
         </div>
 {activeTab === "inventory" && inventoryStats ? (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <MetricCard
               title="Total Items"
               value={inventoryStats.totalItems}
@@ -417,6 +463,12 @@ const tabs = [
               title="Expiring Soon"
               value={inventoryStats.expiringSoon}
               icon="Clock"
+              color="warning"
+            />
+            <MetricCard
+              title="Expired"
+              value={inventoryStats.expired || 0}
+              icon="AlertCircle"
               color="error"
             />
             <MetricCard
@@ -486,7 +538,7 @@ const tabs = [
                 onChange={(e) => setInventoryFilter(e.target.value)}
                 className="input-field min-w-40"
               >
-                <option value="all">All Items</option>
+<option value="all">All Items</option>
                 <option value="low_stock">Low Stock</option>
                 <option value="expiring">Expiring Soon</option>
                 <option value="expired">Expired</option>
@@ -529,11 +581,16 @@ const tabs = [
                             {item.currentStock === 0 ? "Out of Stock" : 
                              item.currentStock <= item.reorderPoint ? "Low Stock" : "In Stock"}
                           </Badge>
-                          <Badge variant={expiryStatus}>
-                            {daysUntilExpiry < 0 ? "Expired" :
+<Badge variant={expiryStatus}>
+                            {daysUntilExpiry < 0 ? "EXPIRED" :
                              daysUntilExpiry <= 30 ? "Expires Soon" :
                              daysUntilExpiry <= 90 ? "Expiring" : "Good"}
                           </Badge>
+                          {daysUntilExpiry < 0 && (
+                            <Badge variant="error" className="ml-2">
+                              DISPOSAL REQUIRED
+                            </Badge>
+                          )}
                         </div>
 
                         {/* Drug Info */}
@@ -607,10 +664,10 @@ const tabs = [
                               <div className="text-sm text-yellow-700">
                                 Item expires in {daysUntilExpiry} days
                               </div>
-                            )}
+)}
                             {daysUntilExpiry <= 0 && (
-                              <div className="text-sm text-red-700">
-                                Item has expired
+                              <div className="text-sm text-red-700 font-semibold">
+                                ⚠️ Item has expired - immediate disposal required
                               </div>
                             )}
                           </div>
@@ -644,8 +701,17 @@ const tabs = [
                           <ApperIcon name="RefreshCw" size={16} className="mr-2" />
                           Set Reorder
                         </Button>
-                        
-                        {item.currentStock <= item.reorderPoint && (
+{daysUntilExpiry < 0 ? (
+                          <Button
+                            onClick={() => handleDisposeMedication(item)}
+                            variant="error"
+                            size="sm"
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            <ApperIcon name="Trash2" size={16} className="mr-2" />
+                            Dispose
+                          </Button>
+                        ) : item.currentStock <= item.reorderPoint && (
                           <Button
                             onClick={() => {
                               const orderQty = prompt("Enter order quantity:", item.reorderPoint * 2)
@@ -1210,6 +1276,179 @@ const tabs = [
               >
                 Update
               </Button>
+            </div>
+          </div>
+        </div>
+)}
+
+      {/* Disposal Modal */}
+      {showDisposalModal && selectedDrug && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-red-700">
+                  <ApperIcon name="AlertTriangle" size={20} className="inline mr-2" />
+                  Medication Disposal
+                </h2>
+                <button
+                  onClick={() => setShowDisposalModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <ApperIcon name="X" size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                {/* Drug Information */}
+                <div className="bg-red-50 border border-red-200 p-4 rounded-lg">
+                  <h3 className="font-medium text-red-800 mb-3">Expired Medication Details</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-600">Drug Name:</span>
+                      <div className="font-medium">{selectedDrug.drugName}</div>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Strength:</span>
+                      <div className="font-medium">{selectedDrug.strength}</div>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Lot Number:</span>
+                      <div className="font-medium">{selectedDrug.lotNumber}</div>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Expiry Date:</span>
+                      <div className="font-medium text-red-600">
+                        {new Date(selectedDrug.expiryDate).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Current Stock:</span>
+                      <div className="font-medium">{selectedDrug.currentStock} {selectedDrug.unit}</div>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Location:</span>
+                      <div className="font-medium">{selectedDrug.location}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Disposal Information */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="quantity">Quantity to Dispose *</Label>
+                    <Input
+                      id="quantity"
+                      type="number"
+                      value={disposalData.quantity}
+                      onChange={(e) => setDisposalData(prev => ({ ...prev, quantity: e.target.value }))}
+                      placeholder="Enter quantity"
+                      max={selectedDrug.currentStock}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="disposalReason">Disposal Reason *</Label>
+                    <select
+                      id="disposalReason"
+                      value={disposalData.disposalReason}
+                      onChange={(e) => setDisposalData(prev => ({ ...prev, disposalReason: e.target.value }))}
+                      className="input-field"
+                      required
+                    >
+                      <option value="Expired medication">Expired medication</option>
+                      <option value="Damaged/contaminated">Damaged/contaminated</option>
+                      <option value="Recalled by manufacturer">Recalled by manufacturer</option>
+                      <option value="Patient return">Patient return</option>
+                      <option value="Overstocked">Overstocked</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="disposalMethod">Disposal Method *</Label>
+                  <select
+                    id="disposalMethod"
+                    value={disposalData.disposalMethod}
+                    onChange={(e) => setDisposalData(prev => ({ ...prev, disposalMethod: e.target.value }))}
+                    className="input-field"
+                    required
+                  >
+                    <option value="DEA approved incinerator">DEA approved incinerator</option>
+                    <option value="Reverse distribution">Reverse distribution</option>
+                    <option value="DEA take-back program">DEA take-back program</option>
+                    <option value="On-site destruction">On-site destruction</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="witness">Witness Name *</Label>
+                    <Input
+                      id="witness"
+                      value={disposalData.witness}
+                      onChange={(e) => setDisposalData(prev => ({ ...prev, witness: e.target.value }))}
+                      placeholder="Enter witness name"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="disposedBy">Disposed By *</Label>
+                    <Input
+                      id="disposedBy"
+                      value={disposalData.disposedBy}
+                      onChange={(e) => setDisposalData(prev => ({ ...prev, disposedBy: e.target.value }))}
+                      placeholder="Enter pharmacist name"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="complianceNotes">Compliance Notes</Label>
+                  <textarea
+                    id="complianceNotes"
+                    value={disposalData.complianceNotes}
+                    onChange={(e) => setDisposalData(prev => ({ ...prev, complianceNotes: e.target.value }))}
+                    className="input-field"
+                    rows={3}
+                    placeholder="DEA Form 41 completion, regulatory requirements, etc."
+                  />
+                </div>
+
+                {/* Regulatory Compliance Warning */}
+                <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+                  <div className="flex items-start space-x-2">
+                    <ApperIcon name="AlertTriangle" className="h-5 w-5 text-yellow-600 mt-0.5" />
+                    <div>
+                      <h4 className="text-sm font-medium text-yellow-800">Regulatory Compliance</h4>
+                      <div className="text-sm text-yellow-700 mt-1">
+                        • DEA Form 41 must be completed for controlled substances
+                        • Witness signature required for all disposals
+                        • Documentation must be retained for 2 years
+                        • High-value disposals may require supervisor approval
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 mt-6">
+                <Button
+                  onClick={() => setShowDisposalModal(false)}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleCompleteDisposal}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                  disabled={!disposalData.quantity || !disposalData.witness || !disposalData.disposedBy}
+                >
+                  <ApperIcon name="Trash2" size={16} className="mr-2" />
+                  Complete Disposal
+                </Button>
+              </div>
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 class MedicationService {
   constructor() {
-    this.medications = [
+this.medications = [
       {
         Id: 1,
         patientId: 1,
@@ -62,7 +62,28 @@ class MedicationService {
         description: "Increased risk of lactic acidosis"
       }
     ]
-}
+
+    // Disposal tracking system
+    this.disposalRecords = [
+      {
+        Id: 1,
+        drugId: 3,
+        drugName: "Amoxicillin",
+        lotNumber: "LOT345678",
+        quantity: 12,
+        unit: "bottles",
+        expiryDate: "2024-03-10",
+        disposalDate: "2024-03-15",
+        disposalReason: "Expired medication",
+        disposalMethod: "DEA approved incinerator",
+        witness: "Dr. Sarah Johnson",
+        disposedBy: "Pharmacist John Smith",
+        complianceNotes: "DEA Form 41 completed and filed",
+        location: "Shelf C-1",
+        costWriteOff: 219.00
+      }
+    ]
+  }
 
   async getInventory() {
     await new Promise(resolve => setTimeout(resolve, 800))
@@ -147,6 +168,38 @@ class MedicationService {
         location: "Shelf B-1",
         lotNumber: "LOT567890",
         costPerUnit: 9.75
+      },
+      {
+        Id: 6,
+        drugName: "Acetaminophen",
+        ndc: "12345-0006-01",
+        manufacturer: "Pain Relief Corp",
+        dosageForm: "Tablet",
+        strength: "500mg",
+        currentStock: 15,
+        reorderPoint: 25,
+        maxStock: 100,
+        unit: "bottles",
+        expiryDate: "2024-02-28",
+        location: "Shelf D-2",
+        lotNumber: "LOT112233",
+        costPerUnit: 8.50
+      },
+      {
+        Id: 7,
+        drugName: "Omeprazole",
+        ndc: "12345-0007-01",
+        manufacturer: "Gastro Meds",
+        dosageForm: "Capsule",
+        strength: "20mg",
+        currentStock: 22,
+        reorderPoint: 18,
+        maxStock: 80,
+        unit: "bottles",
+        expiryDate: "2024-01-15",
+        location: "Shelf E-1",
+        lotNumber: "LOT445566",
+        costPerUnit: 16.75
       }
     ]
     
@@ -167,6 +220,7 @@ class MedicationService {
         const daysUntilExpiry = Math.ceil((new Date(item.expiryDate) - now) / (1000 * 60 * 60 * 24))
         return daysUntilExpiry <= 90 && daysUntilExpiry > 0
       }).length,
+      expired: inventory.filter(item => new Date(item.expiryDate) < now).length,
       totalValue: inventory.reduce((sum, item) => sum + (item.currentStock * item.costPerUnit), 0)
     }
     
@@ -202,7 +256,7 @@ class MedicationService {
   async checkLowStock() {
     await new Promise(resolve => setTimeout(resolve, 500))
     
-const inventory = await this.getInventory()
+    const inventory = await this.getInventory()
     return inventory.filter(item => item.currentStock <= item.reorderPoint)
   }
 
@@ -218,6 +272,104 @@ const inventory = await this.getInventory()
     })
   }
 
+  // Get expired medications that require disposal
+  async getExpiredMedications() {
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    const inventory = await this.getInventory()
+    const now = new Date()
+    
+    return inventory.filter(item => {
+      return new Date(item.expiryDate) < now && item.currentStock > 0
+    })
+  }
+
+  // Dispose expired medication
+  async disposeMedication(drugId, disposalData) {
+    await new Promise(resolve => setTimeout(resolve, 800))
+    
+    if (!drugId || !disposalData) {
+      throw new Error("Invalid disposal data")
+    }
+
+    // Validate required fields
+    const requiredFields = ['quantity', 'disposalReason', 'disposalMethod', 'witness', 'disposedBy']
+    for (const field of requiredFields) {
+      if (!disposalData[field]) {
+        throw new Error(`${field} is required for disposal`)
+      }
+    }
+
+    // Generate disposal record
+    const disposalRecord = {
+      Id: Date.now() + Math.random(),
+      drugId,
+      drugName: disposalData.drugName,
+      lotNumber: disposalData.lotNumber,
+      quantity: disposalData.quantity,
+      unit: disposalData.unit,
+      expiryDate: disposalData.expiryDate,
+      disposalDate: new Date().toISOString(),
+      disposalReason: disposalData.disposalReason,
+      disposalMethod: disposalData.disposalMethod,
+      witness: disposalData.witness,
+      disposedBy: disposalData.disposedBy,
+      complianceNotes: disposalData.complianceNotes || "",
+      location: disposalData.location,
+      costWriteOff: disposalData.quantity * disposalData.costPerUnit,
+      regulatoryCompliance: {
+        deaFormRequired: disposalData.disposalMethod === "DEA approved incinerator",
+        witnessRequired: true,
+        documentationComplete: true,
+        approvalRequired: disposalData.quantity * disposalData.costPerUnit > 500
+      }
+    }
+
+    // Add to disposal records
+    this.disposalRecords.push(disposalRecord)
+
+    return {
+      success: true,
+      message: "Medication disposed successfully",
+      disposalRecord,
+      complianceStatus: "Complete"
+    }
+  }
+
+  // Get disposal history
+  async getDisposalHistory() {
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    return this.disposalRecords.sort((a, b) => new Date(b.disposalDate) - new Date(a.disposalDate))
+  }
+
+  // Get disposal statistics
+  async getDisposalStats() {
+    await new Promise(resolve => setTimeout(resolve, 300))
+    
+    const thisMonth = new Date()
+    const lastMonth = new Date(thisMonth.getFullYear(), thisMonth.getMonth() - 1, 1)
+    
+    const thisMonthDisposals = this.disposalRecords.filter(record => 
+      new Date(record.disposalDate) >= lastMonth
+    )
+
+    return {
+      totalDisposals: this.disposalRecords.length,
+      thisMonthDisposals: thisMonthDisposals.length,
+      totalCostWriteOff: this.disposalRecords.reduce((sum, record) => sum + record.costWriteOff, 0),
+      thisMonthCostWriteOff: thisMonthDisposals.reduce((sum, record) => sum + record.costWriteOff, 0),
+      disposalReasons: this.disposalRecords.reduce((acc, record) => {
+        acc[record.disposalReason] = (acc[record.disposalReason] || 0) + 1
+        return acc
+      }, {}),
+      disposalMethods: this.disposalRecords.reduce((acc, record) => {
+        acc[record.disposalMethod] = (acc[record.disposalMethod] || 0) + 1
+        return acc
+      }, {})
+    }
+  }
+
   // Automated Alert System
   async monitorInventoryAlerts() {
     await new Promise(resolve => setTimeout(resolve, 300))
@@ -229,7 +381,7 @@ const inventory = await this.getInventory()
       // Low stock alerts
       if (item.currentStock <= item.reorderPoint) {
         alerts.push({
-          Id: `low_stock_${item.Id}`,
+          Id: `stock_${item.Id}`,
           type: 'low_stock',
           priority: item.currentStock === 0 ? 'critical' : 'high',
           drugId: item.Id,
@@ -240,7 +392,7 @@ const inventory = await this.getInventory()
             ? `${item.drugName} is out of stock`
             : `${item.drugName} is below reorder point (${item.currentStock}/${item.reorderPoint})`,
           timestamp: new Date().toISOString(),
-          autoOrderTriggered: item.currentStock <= item.reorderPoint && item.autoReorder
+          location: item.location
         })
       }
       
@@ -257,6 +409,23 @@ const inventory = await this.getInventory()
           daysUntilExpiry,
           message: `${item.drugName} expires in ${daysUntilExpiry} days`,
           timestamp: new Date().toISOString()
+        })
+      }
+
+      // Expired alerts (disposal required)
+      if (daysUntilExpiry <= 0 && item.currentStock > 0) {
+        alerts.push({
+          Id: `expired_${item.Id}`,
+          type: 'expired',
+          priority: 'critical',
+          drugId: item.Id,
+          drugName: item.drugName,
+          expiryDate: item.expiryDate,
+          daysExpired: Math.abs(daysUntilExpiry),
+          currentStock: item.currentStock,
+          message: `${item.drugName} expired ${Math.abs(daysUntilExpiry)} days ago - disposal required`,
+          timestamp: new Date().toISOString(),
+          action: 'disposal_required'
         })
       }
     })
@@ -281,8 +450,8 @@ const inventory = await this.getInventory()
           orderNumber: `PO-${Date.now()}-${item.Id}`,
           drugId: item.Id,
           drugName: item.drugName,
-          ndc: item.ndc,
           currentStock: item.currentStock,
+          ndc: item.ndc,
           reorderPoint: item.reorderPoint,
           orderQuantity,
           estimatedCost: orderQuantity * item.unitCost,
