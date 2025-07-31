@@ -206,6 +206,79 @@ const bedService = {
           reject(new Error('Bed not found'))
         }
       }, 100)
+})
+  },
+
+  // Get admission queue
+  getAdmissionQueue: async () => {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        // This would typically come from a separate queue service
+        // For now, we'll simulate queue data from the beds.json file
+        import("@/services/mockData/beds.json").then(data => {
+          const queueData = data.default.filter(item => item.firstName && item.condition)
+          resolve([...queueData])
+        })
+      }, 100)
+    })
+  },
+
+  // Assign bed from admission queue
+  assignBedFromQueue: async (queueItemId, bedId) => {
+    if (typeof bedId !== 'number') {
+      throw new Error('Bed ID must be a number')
+    }
+
+    return new Promise((resolve, reject) => {
+      setTimeout(async () => {
+        try {
+          // Get queue item
+          const queueData = await import("@/services/mockData/beds.json")
+          const queueItem = queueData.default.find(item => item.Id === queueItemId)
+          
+          if (!queueItem) {
+            reject(new Error('Queue item not found'))
+            return
+          }
+
+          // Find and assign bed
+          const bedIndex = beds.findIndex(b => b.Id === bedId)
+          if (bedIndex === -1) {
+            reject(new Error('Bed not found'))
+            return
+          }
+
+          if (beds[bedIndex].status !== 'available') {
+            reject(new Error('Bed is not available'))
+            return
+          }
+
+          // Assign patient to bed
+          const isCritical = queueItem.condition === 'critical'
+          beds[bedIndex] = {
+            ...beds[bedIndex],
+            status: isCritical ? 'occupied_critical' : 'occupied_stable',
+            patientId: queueItem.Id,
+            patientName: `${queueItem.firstName} ${queueItem.lastName}`,
+            admissionDate: new Date().toISOString(),
+            attendingDoctor: "Dr. " + (isCritical ? "Emergency Physician" : "General Physician")
+          }
+
+          resolve({ ...beds[bedIndex] })
+        } catch (error) {
+          reject(error)
+        }
+      }, 200)
+    })
+  },
+
+  // Update queue priority (for future use)
+  updateQueuePriority: async (queueItemId, newPriority) => {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        // This would update priority in queue management system
+        resolve({ success: true, queueItemId, newPriority })
+      }, 100)
     })
   }
 }

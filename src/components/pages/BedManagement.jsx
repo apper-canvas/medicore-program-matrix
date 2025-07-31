@@ -9,9 +9,10 @@ import Badge from "@/components/atoms/Badge"
 import Loading from "@/components/ui/Loading"
 import Error from "@/components/ui/Error"
 import bedService from "@/services/api/bedService"
-
+import patientService from "@/services/api/patientService"
 const BedManagement = () => {
-  const [beds, setBeds] = useState([])
+const [beds, setBeds] = useState([])
+  const [admissionQueue, setAdmissionQueue] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [searchTerm, setSearchTerm] = useState("")
@@ -19,6 +20,7 @@ const BedManagement = () => {
   const [selectedStatus, setSelectedStatus] = useState("all")
   const [selectedBed, setSelectedBed] = useState(null)
   const [showBedModal, setShowBedModal] = useState(false)
+  const [refreshInterval, setRefreshInterval] = useState(null)
   const navigate = useNavigate()
 
   const statusConfig = {
@@ -37,9 +39,31 @@ const BedManagement = () => {
     { id: "Emergency", name: "Emergency Department" }
   ]
 
-  useEffect(() => {
+useEffect(() => {
     loadBeds()
+    loadAdmissionQueue()
+    
+    // Set up real-time updates every 30 seconds
+    const interval = setInterval(() => {
+      loadBeds()
+      loadAdmissionQueue()
+    }, 30000)
+    
+    setRefreshInterval(interval)
+    
+    return () => {
+      if (interval) clearInterval(interval)
+    }
   }, [])
+
+  const loadAdmissionQueue = async () => {
+    try {
+      const queue = await bedService.getAdmissionQueue()
+      setAdmissionQueue(queue)
+    } catch (error) {
+      console.error("Failed to load admission queue:", error)
+    }
+  }
 
   const loadBeds = async () => {
     try {
@@ -53,7 +77,7 @@ const BedManagement = () => {
     } finally {
       setLoading(false)
     }
-  }
+}
 
   const handleBedStatusUpdate = async (bedId, newStatus) => {
     try {
@@ -81,7 +105,7 @@ const BedManagement = () => {
     return matchesSearch && matchesDepartment && matchesStatus
   })
 
-  const getBedStats = () => {
+const getBedStats = () => {
     const stats = {
       total: beds.length,
       available: beds.filter(b => b.status === "available").length,
@@ -93,6 +117,57 @@ const BedManagement = () => {
     return stats
   }
 
+  const getDepartmentStats = () => {
+    const departments = [...new Set(beds.map(b => b.department))]
+    return departments.map(dept => {
+      const deptBeds = beds.filter(b => b.department === dept)
+      const occupied = deptBeds.filter(b => b.status.startsWith("occupied")).length
+      const total = deptBeds.length
+      const occupancyRate = Math.round((occupied / total) * 100) || 0
+      
+      return {
+        department: dept,
+        total,
+        occupied,
+        available: deptBeds.filter(b => b.status === "available").length,
+        critical: deptBeds.filter(b => b.status === "occupied_critical").length,
+        occupancyRate,
+        status: occupancyRate >= 90 ? 'critical' : occupancyRate >= 70 ? 'warning' : 'normal'
+      }
+    })
+  }
+
+  const calculatePriority = (patient) => {
+    let score = 0
+    
+    // Medical condition priority
+    if (patient.condition === 'critical') score += 10
+    else if (patient.condition === 'urgent') score += 7
+    else if (patient.condition === 'moderate') score += 4
+    else score += 1
+    
+    // Wait time priority (1 point per hour waiting)
+    const waitHours = Math.floor((Date.now() - new Date(patient.requestTime).getTime()) / (1000 * 60 * 60))
+    score += Math.min(waitHours, 10)
+    
+    // Age factor (elderly patients get priority)
+    const age = new Date().getFullYear() - new Date(patient.dateOfBirth).getFullYear()
+    if (age >= 70) score += 3
+    else if (age >= 60) score += 2
+    
+    return Math.min(score, 20) // Cap at 20
+  }
+
+  const assignBedFromQueue = async (queueItemId, bedId) => {
+    try {
+      await bedService.assignBedFromQueue(queueItemId, bedId)
+      await loadBeds()
+      await loadAdmissionQueue()
+      toast.success("Patient assigned to bed successfully")
+    } catch (error) {
+      toast.error("Failed to assign bed: " + error.message)
+    }
+  }
   const stats = getBedStats()
 
   if (loading) return <Loading />
@@ -105,7 +180,7 @@ const BedManagement = () => {
         <p className="text-gray-600">Monitor and manage hospital bed occupancy</p>
       </div>
 
-      {/* Statistics Cards */}
+{/* Real-time Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
         <Card className="p-4">
           <div className="flex items-center justify-between">
@@ -140,10 +215,10 @@ const BedManagement = () => {
         <Card className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Maintenance</p>
-              <p className="text-2xl font-bold text-blue-600">{stats.maintenance}</p>
+              <p className="text-sm font-medium text-gray-600">Queue Length</p>
+              <p className="text-2xl font-bold text-red-600">{admissionQueue.length}</p>
             </div>
-            <ApperIcon name="Wrench" className="h-8 w-8 text-blue-400" />
+            <ApperIcon name="Clock" className="h-8 w-8 text-red-400" />
           </div>
         </Card>
 
@@ -158,6 +233,181 @@ const BedManagement = () => {
         </Card>
       </div>
 
+      {/* Department Occupancy Breakdown */}
+      <Card className="p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Department Occupancy</h3>
+          <div className="flex items-center text-sm text-gray-500">
+            <ApperIcon name="RefreshCw" className="h-4 w-4 mr-1" />
+            Real-time updates
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {getDepartmentStats().map((dept) => (
+            <div key={dept.department} className="border rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-medium text-gray-900">{dept.department}</h4>
+                <Badge 
+                  variant={dept.status === 'critical' ? 'destructive' : dept.status === 'warning' ? 'warning' : 'default'}
+                  className="text-xs"
+                >
+                  {dept.occupancyRate}%
+                </Badge>
+              </div>
+              
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Total: {dept.total}</span>
+                  <span className="text-gray-600">Available: {dept.available}</span>
+                </div>
+                
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className={`h-2 rounded-full transition-all duration-300 ${
+                      dept.status === 'critical' ? 'bg-red-500' : 
+                      dept.status === 'warning' ? 'bg-yellow-500' : 'bg-green-500'
+                    }`}
+                    style={{ width: `${dept.occupancyRate}%` }}
+                  ></div>
+                </div>
+                
+                {dept.critical > 0 && (
+                  <div className="flex items-center text-xs text-red-600">
+                    <ApperIcon name="AlertTriangle" className="h-3 w-3 mr-1" />
+                    {dept.critical} critical patient{dept.critical > 1 ? 's' : ''}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Admission Queue */}
+      <Card className="p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">
+            Admission Queue ({admissionQueue.length} waiting)
+          </h3>
+          <Button
+            onClick={() => {
+              loadAdmissionQueue()
+              toast.info("Queue refreshed")
+            }}
+            variant="secondary"
+            size="sm"
+          >
+            <ApperIcon name="RefreshCw" className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
+
+        {admissionQueue.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <ApperIcon name="CheckCircle" className="h-12 w-12 mx-auto mb-2 text-green-400" />
+            <p>No patients waiting for admission</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {admissionQueue
+              .sort((a, b) => calculatePriority(b) - calculatePriority(a))
+              .map((patient) => {
+                const priority = calculatePriority(patient)
+                const waitTime = Math.floor((Date.now() - new Date(patient.requestTime).getTime()) / (1000 * 60 * 60))
+                const availableBeds = beds.filter(b => 
+                  b.status === "available" && 
+                  b.department === patient.preferredDepartment
+                )
+
+                return (
+                  <div key={patient.Id} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center">
+                        <div className={`w-3 h-3 rounded-full mr-3 ${
+                          priority >= 15 ? 'bg-red-500' : 
+                          priority >= 10 ? 'bg-yellow-500' : 'bg-green-500'
+                        }`}></div>
+                        <div>
+                          <h4 className="font-medium text-gray-900">
+                            {patient.firstName} {patient.lastName}
+                          </h4>
+                          <p className="text-sm text-gray-600">
+                            Requested: {patient.preferredDepartment}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="text-right">
+                        <Badge 
+                          variant={priority >= 15 ? 'destructive' : priority >= 10 ? 'warning' : 'default'}
+                          className="mb-1"
+                        >
+                          Priority: {priority}/20
+                        </Badge>
+                        <p className="text-xs text-gray-500">
+                          Waiting: {waitTime}h
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                      <div>
+                        <span className="text-xs text-gray-500">Condition</span>
+                        <p className={`text-sm font-medium ${
+                          patient.condition === 'critical' ? 'text-red-600' :
+                          patient.condition === 'urgent' ? 'text-yellow-600' :
+                          patient.condition === 'moderate' ? 'text-blue-600' : 'text-green-600'
+                        }`}>
+                          {patient.condition.charAt(0).toUpperCase() + patient.condition.slice(1)}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500">Age</span>
+                        <p className="text-sm">
+                          {new Date().getFullYear() - new Date(patient.dateOfBirth).getFullYear()} years
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500">Available Beds</span>
+                        <p className="text-sm font-medium">
+                          {availableBeds.length} in {patient.preferredDepartment}
+                        </p>
+                      </div>
+                    </div>
+
+                    {availableBeds.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {availableBeds.slice(0, 3).map((bed) => (
+                          <Button
+                            key={bed.Id}
+                            onClick={() => assignBedFromQueue(patient.Id, bed.Id)}
+                            variant="primary"
+                            size="sm"
+                          >
+                            Assign to {bed.bedNumber}
+                          </Button>
+                        ))}
+                        {availableBeds.length > 3 && (
+                          <span className="text-sm text-gray-500 py-1">
+                            +{availableBeds.length - 3} more beds
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {availableBeds.length === 0 && (
+                      <div className="text-sm text-yellow-600">
+                        <ApperIcon name="Clock" className="h-4 w-4 inline mr-1" />
+                        No beds available in preferred department
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+          </div>
+        )}
+      </Card>
       {/* Filters */}
       <Card className="p-6 mb-6">
         <div className="flex flex-col md:flex-row gap-4">
@@ -255,21 +505,44 @@ const BedManagement = () => {
             </div>
           )
         })}
-      </Card>
+</Card>
 
-      {/* Legend */}
+      {/* Priority & Status Legend */}
       <Card className="p-4 mt-6">
-        <h3 className="text-sm font-medium text-gray-900 mb-3">Status Legend</h3>
-        <div className="flex flex-wrap gap-4">
-          {Object.entries(statusConfig).map(([status, config]) => (
-            <div key={status} className="flex items-center">
-              <div className={`w-3 h-3 rounded-full mr-2 ${config.color}`}></div>
-              <span className="text-sm text-gray-600">{config.label}</span>
+        <h3 className="text-sm font-medium text-gray-900 mb-3">Legend</h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <h4 className="text-xs font-medium text-gray-700 mb-2">Bed Status</h4>
+            <div className="flex flex-wrap gap-4">
+              {Object.entries(statusConfig).map(([status, config]) => (
+                <div key={status} className="flex items-center">
+                  <div className={`w-3 h-3 rounded-full mr-2 ${config.color}`}></div>
+                  <span className="text-sm text-gray-600">{config.label}</span>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
+          
+          <div>
+            <h4 className="text-xs font-medium text-gray-700 mb-2">Priority Levels</h4>
+            <div className="space-y-1">
+              <div className="flex items-center">
+                <div className="w-3 h-3 rounded-full mr-2 bg-red-500"></div>
+                <span className="text-sm text-gray-600">High Priority (15-20)</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-3 h-3 rounded-full mr-2 bg-yellow-500"></div>
+                <span className="text-sm text-gray-600">Medium Priority (10-14)</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-3 h-3 rounded-full mr-2 bg-green-500"></div>
+                <span className="text-sm text-gray-600">Low Priority (1-9)</span>
+              </div>
+            </div>
+          </div>
         </div>
       </Card>
-
       {/* Bed Details Modal */}
       {showBedModal && selectedBed && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
