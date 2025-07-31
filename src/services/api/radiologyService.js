@@ -437,6 +437,14 @@ class RadiologyService {
     return { ...study };
   }
 
+  async getStudiesByPatient(patientId) {
+    await this.delay(300);
+    
+    return mockDicomStudies
+      .filter(s => s.patientId === patientId)
+      .map(s => ({ ...s }));
+  }
+
   async getDicomImage(imageId) {
     await this.delay(300);
     
@@ -449,6 +457,10 @@ class RadiologyService {
     }
     
     throw new Error('DICOM image not found');
+  }
+
+  async delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   // Helper methods

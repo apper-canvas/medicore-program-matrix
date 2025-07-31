@@ -40,6 +40,19 @@ const Radiology = () => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentMeasurement, setCurrentMeasurement] = useState(null);
 
+  // Comparison Mode State
+  const [comparisonMode, setComparisonMode] = useState(false);
+  const [priorStudy, setPriorStudy] = useState(null);
+  const [currentStudyImage, setCurrentStudyImage] = useState(0);
+  const [priorStudyImage, setPriorStudyImage] = useState(0);
+  const [availableStudies, setAvailableStudies] = useState([]);
+  const [syncViewers, setSyncViewers] = useState(true);
+  const [priorCanvasRef] = useState(useRef(null));
+  const [priorZoomLevel, setPriorZoomLevel] = useState(1);
+  const [priorPanOffset, setPriorPanOffset] = useState({ x: 0, y: 0 });
+  const [priorWindowLevel, setPriorWindowLevel] = useState({ window: 400, level: 40 });
+  const [showStudySelector, setShowStudySelector] = useState(false);
+
   // Form data
   const [formData, setFormData] = useState({
     patientId: "",
@@ -196,17 +209,24 @@ const getPriorityBadge = (priority) => {
   };
 
   // DICOM Viewer Functions - All hooks must be called before any early returns
-  const openViewer = useCallback(async (orderId) => {
+const openViewer = useCallback(async (orderId) => {
     try {
       const study = await radiologyService.getDicomStudy(orderId);
       setSelectedStudy(study);
       setCurrentImage(0);
+      setCurrentStudyImage(0);
       setZoomLevel(1);
       setPanOffset({ x: 0, y: 0 });
       setWindowLevel({ window: 400, level: 40 });
       setMeasurements([]);
       setActiveTool('pan');
+      setComparisonMode(false);
+      setPriorStudy(null);
       setViewerOpen(true);
+      
+      // Load available studies for comparison
+      const patientStudies = await radiologyService.getStudiesByPatient(study.patientId);
+      setAvailableStudies(patientStudies.filter(s => s.Id !== study.Id));
       
       // Load first image
       setTimeout(() => {
@@ -219,12 +239,50 @@ const getPriorityBadge = (priority) => {
     }
   }, []);
 
-  const loadDicomImage = useCallback((imageData) => {
-    const canvas = canvasRef.current;
+  const startComparison = useCallback(async (priorStudyId) => {
+    try {
+      const prior = await radiologyService.getDicomStudy(priorStudyId);
+      setPriorStudy(prior);
+      setPriorStudyImage(0);
+      setPriorZoomLevel(1);
+      setPriorPanOffset({ x: 0, y: 0 });
+      setPriorWindowLevel({ window: 400, level: 40 });
+      setComparisonMode(true);
+      setShowStudySelector(false);
+      
+      // Load first image of prior study
+      setTimeout(() => {
+        if (prior.images && prior.images.length > 0) {
+          loadDicomImage(prior.images[0], true);
+        }
+      }, 100);
+      
+      toast.success('Comparison mode activated');
+    } catch (error) {
+      toast.error('Failed to load prior study');
+    }
+  }, []);
+
+  const exitComparison = useCallback(() => {
+    setComparisonMode(false);
+    setPriorStudy(null);
+    setPriorStudyImage(0);
+    setPriorZoomLevel(1);
+    setPriorPanOffset({ x: 0, y: 0 });
+    setPriorWindowLevel({ window: 400, level: 40 });
+    toast.success('Comparison mode deactivated');
+  }, []);
+
+const loadDicomImage = useCallback((imageData, isPrior = false) => {
+    const canvas = isPrior ? priorCanvasRef.current : canvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
     const img = new Image();
+    
+    const zoom = isPrior ? priorZoomLevel : zoomLevel;
+    const pan = isPrior ? priorPanOffset : panOffset;
+    const winLevel = isPrior ? priorWindowLevel : windowLevel;
     
     img.onload = () => {
       canvas.width = img.width;
@@ -235,21 +293,23 @@ const getPriorityBadge = (priority) => {
       ctx.save();
       
       // Apply zoom and pan
-      ctx.scale(zoomLevel, zoomLevel);
-      ctx.translate(panOffset.x / zoomLevel, panOffset.y / zoomLevel);
+      ctx.scale(zoom, zoom);
+      ctx.translate(pan.x / zoom, pan.y / zoom);
       
       // Apply window/level filter
-      ctx.filter = `contrast(${windowLevel.window / 200}%) brightness(${windowLevel.level + 50}%)`;
+      ctx.filter = `contrast(${winLevel.window / 200}%) brightness(${winLevel.level + 50}%)`;
       ctx.drawImage(img, 0, 0);
       
       ctx.restore();
       
-      // Draw measurements
-      drawMeasurements(ctx);
+      // Draw measurements (only on current study)
+      if (!isPrior) {
+        drawMeasurements(ctx);
+      }
     };
     
     img.src = imageData.url;
-  }, [zoomLevel, panOffset, windowLevel, measurements]);
+  }, [zoomLevel, panOffset, windowLevel, measurements, priorZoomLevel, priorPanOffset, priorWindowLevel]);
 
   const drawMeasurements = useCallback((ctx) => {
     ctx.save();
@@ -298,25 +358,26 @@ const getPriorityBadge = (priority) => {
     ctx.restore();
   }, [measurements]);
 
-  const handleCanvasMouseDown = useCallback((e) => {
-    const canvas = canvasRef.current;
+const handleCanvasMouseDown = useCallback((e, isPrior = false) => {
+    const canvas = isPrior ? priorCanvasRef.current : canvasRef.current;
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    const currentPanOffset = isPrior ? priorPanOffset : panOffset;
 
     if (activeTool === 'pan') {
       setIsDragging(true);
-      setDragStart({ x: x - panOffset.x, y: y - panOffset.y });
-    } else if (activeTool === 'distance') {
+      setDragStart({ x: x - currentPanOffset.x, y: y - currentPanOffset.y, isPrior });
+    } else if (activeTool === 'distance' && !isPrior) {
       setIsDrawing(true);
       setCurrentMeasurement({ type: 'distance', start: { x, y }, end: { x, y } });
     }
-  }, [activeTool, panOffset]);
+  }, [activeTool, panOffset, priorPanOffset]);
 
-  const handleCanvasMouseMove = useCallback((e) => {
-    const canvas = canvasRef.current;
+const handleCanvasMouseMove = useCallback((e, isPrior = false) => {
+    const canvas = isPrior ? priorCanvasRef.current : canvasRef.current;
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
@@ -324,11 +385,19 @@ const getPriorityBadge = (priority) => {
     const y = e.clientY - rect.top;
 
     if (isDragging && activeTool === 'pan') {
-      setPanOffset({ x: x - dragStart.x, y: y - dragStart.y });
-    } else if (isDrawing && activeTool === 'distance' && currentMeasurement) {
+      const newOffset = { x: x - dragStart.x, y: y - dragStart.y };
+      
+      if (dragStart.isPrior) {
+        setPriorPanOffset(newOffset);
+        if (syncViewers) setPanOffset(newOffset);
+      } else {
+        setPanOffset(newOffset);
+        if (syncViewers) setPriorPanOffset(newOffset);
+      }
+    } else if (isDrawing && activeTool === 'distance' && currentMeasurement && !isPrior) {
       setCurrentMeasurement({ ...currentMeasurement, end: { x, y } });
     }
-  }, [isDragging, isDrawing, activeTool, dragStart, currentMeasurement]);
+  }, [isDragging, isDrawing, activeTool, dragStart, currentMeasurement, syncViewers]);
 
   const handleCanvasMouseUp = useCallback(() => {
     if (isDragging) {
@@ -341,36 +410,68 @@ const getPriorityBadge = (priority) => {
     }
   }, [isDragging, isDrawing, currentMeasurement]);
 
-  const handleZoom = useCallback((delta, clientX, clientY) => {
-    const canvas = canvasRef.current;
+const handleZoom = useCallback((delta, clientX, clientY, isPrior = false) => {
+    const canvas = isPrior ? priorCanvasRef.current : canvasRef.current;
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
     const mouseX = clientX - rect.left;
     const mouseY = clientY - rect.top;
+    
+    const currentZoom = isPrior ? priorZoomLevel : zoomLevel;
+    const currentPan = isPrior ? priorPanOffset : panOffset;
+    
+    const newZoom = Math.max(0.1, Math.min(5, currentZoom + delta));
+    const zoomRatio = newZoom / currentZoom;
 
-    const newZoom = Math.max(0.1, Math.min(5, zoomLevel + delta));
-    const zoomRatio = newZoom / zoomLevel;
+    const newPanOffset = {
+      x: mouseX - (mouseX - currentPan.x) * zoomRatio,
+      y: mouseY - (mouseY - currentPan.y) * zoomRatio
+    };
 
-    setPanOffset(prev => ({
-      x: mouseX - (mouseX - prev.x) * zoomRatio,
-      y: mouseY - (mouseY - prev.y) * zoomRatio
-    }));
+    if (isPrior) {
+      setPriorZoomLevel(newZoom);
+      setPriorPanOffset(newPanOffset);
+      if (syncViewers) {
+        setZoomLevel(newZoom);
+        setPanOffset(newPanOffset);
+      }
+    } else {
+      setZoomLevel(newZoom);
+      setPanOffset(newPanOffset);
+      if (syncViewers) {
+        setPriorZoomLevel(newZoom);
+        setPriorPanOffset(newPanOffset);
+      }
+    }
+  }, [zoomLevel, priorZoomLevel, panOffset, priorPanOffset, syncViewers]);
 
-    setZoomLevel(newZoom);
-  }, [zoomLevel]);
-
-  const handleWheel = useCallback((e) => {
+const handleWheel = useCallback((e, isPrior = false) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    handleZoom(delta, e.clientX, e.clientY);
+    handleZoom(delta, e.clientX, e.clientY, isPrior);
   }, [handleZoom]);
 
-  const resetView = useCallback(() => {
-    setZoomLevel(1);
-    setPanOffset({ x: 0, y: 0 });
-    setWindowLevel({ window: 400, level: 40 });
-  }, []);
+const resetView = useCallback((isPrior = false) => {
+    if (isPrior) {
+      setPriorZoomLevel(1);
+      setPriorPanOffset({ x: 0, y: 0 });
+      setPriorWindowLevel({ window: 400, level: 40 });
+    } else {
+      setZoomLevel(1);
+      setPanOffset({ x: 0, y: 0 });
+      setWindowLevel({ window: 400, level: 40 });
+    }
+    
+    if (syncViewers && comparisonMode) {
+      setZoomLevel(1);
+      setPanOffset({ x: 0, y: 0 });
+      setWindowLevel({ window: 400, level: 40 });
+      setPriorZoomLevel(1);
+      setPriorPanOffset({ x: 0, y: 0 });
+      setPriorWindowLevel({ window: 400, level: 40 });
+    }
+  }, [syncViewers, comparisonMode]);
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -402,11 +503,17 @@ const getPriorityBadge = (priority) => {
   }, [selectedStudy, measurements]);
 
   // Update canvas when image changes
-  useEffect(() => {
-    if (selectedStudy && selectedStudy.images && selectedStudy.images[currentImage]) {
-      loadDicomImage(selectedStudy.images[currentImage]);
+useEffect(() => {
+    if (selectedStudy && selectedStudy.images && selectedStudy.images[currentStudyImage]) {
+      loadDicomImage(selectedStudy.images[currentStudyImage]);
     }
-  }, [selectedStudy, currentImage, loadDicomImage]);
+  }, [selectedStudy, currentStudyImage, loadDicomImage]);
+
+  useEffect(() => {
+    if (priorStudy && priorStudy.images && priorStudy.images[priorStudyImage]) {
+      loadDicomImage(priorStudy.images[priorStudyImage], true);
+    }
+  }, [priorStudy, priorStudyImage, loadDicomImage]);
 
   // Early return for loading state - placed after all hooks
   if (loading) {
@@ -1312,7 +1419,48 @@ return (
 
             <div className="flex flex-1 overflow-hidden">
               {/* Tool Panel */}
-              <div className="bg-gray-800 text-white p-4 w-64 space-y-4">
+<div className="bg-gray-800 text-white p-4 w-64 space-y-4">
+                {/* Comparison Controls */}
+                <div>
+                  <h4 className="font-medium mb-2">Study Comparison</h4>
+                  <div className="space-y-2">
+                    {!comparisonMode ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowStudySelector(true)}
+                        className="w-full"
+                        disabled={availableStudies.length === 0}
+                      >
+                        <ApperIcon name="Copy" size={16} className="mr-1" />
+                        Compare Studies
+                      </Button>
+                    ) : (
+                      <div className="space-y-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={exitComparison}
+                          className="w-full"
+                        >
+                          <ApperIcon name="X" size={16} className="mr-1" />
+                          Exit Comparison
+                        </Button>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="syncViewers"
+                            checked={syncViewers}
+                            onChange={(e) => setSyncViewers(e.target.checked)}
+                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                          />
+                          <label htmlFor="syncViewers" className="text-xs">Sync Viewers</label>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <div>
                   <h4 className="font-medium mb-2">Tools</h4>
                   <div className="grid grid-cols-2 gap-2">
@@ -1383,7 +1531,7 @@ return (
                   </div>
                 </div>
 
-                <div>
+<div>
                   <h4 className="font-medium mb-2">Zoom: {(zoomLevel * 100).toFixed(0)}%</h4>
                   <div className="flex space-x-2">
                     <Button
@@ -1405,7 +1553,7 @@ return (
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={resetView}
+                      onClick={() => resetView()}
                       className="flex-1"
                     >
                       <ApperIcon name="RotateCcw" size={16} />
@@ -1440,32 +1588,76 @@ return (
                 </div>
               </div>
 
-              {/* Image Viewer */}
-              <div className="flex-1 bg-black flex items-center justify-center overflow-hidden">
-                <canvas
-                  ref={canvasRef}
-                  onMouseDown={handleCanvasMouseDown}
-                  onMouseMove={handleCanvasMouseMove}
-                  onMouseUp={handleCanvasMouseUp}
-                  onWheel={handleWheel}
-                  className="max-w-full max-h-full cursor-crosshair"
-                  style={{
-                    cursor: activeTool === 'pan' ? 'grab' : activeTool === 'zoom' ? 'zoom-in' : 'crosshair'
-                  }}
-                />
+{/* Image Viewer */}
+              <div className={`flex-1 bg-black flex ${comparisonMode ? 'flex-col' : 'items-center justify-center'} overflow-hidden`}>
+                {comparisonMode ? (
+                  <>
+                    {/* Current Study */}
+                    <div className="flex-1 flex flex-col border-b border-gray-600">
+                      <div className="bg-gray-700 text-white text-xs p-2 text-center">
+                        Current: {selectedStudy.studyDescription} ({selectedStudy.studyDate})
+                      </div>
+                      <div className="flex-1 flex items-center justify-center">
+                        <canvas
+                          ref={canvasRef}
+                          onMouseDown={(e) => handleCanvasMouseDown(e, false)}
+                          onMouseMove={(e) => handleCanvasMouseMove(e, false)}
+                          onMouseUp={handleCanvasMouseUp}
+                          onWheel={(e) => handleWheel(e, false)}
+                          className="max-w-full max-h-full cursor-crosshair"
+                          style={{
+                            cursor: activeTool === 'pan' ? 'grab' : activeTool === 'zoom' ? 'zoom-in' : 'crosshair'
+                          }}
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* Prior Study */}
+                    <div className="flex-1 flex flex-col">
+                      <div className="bg-gray-700 text-white text-xs p-2 text-center">
+                        Prior: {priorStudy?.studyDescription} ({priorStudy?.studyDate})
+                      </div>
+                      <div className="flex-1 flex items-center justify-center">
+                        <canvas
+                          ref={priorCanvasRef}
+                          onMouseDown={(e) => handleCanvasMouseDown(e, true)}
+                          onMouseMove={(e) => handleCanvasMouseMove(e, true)}
+                          onMouseUp={handleCanvasMouseUp}
+                          onWheel={(e) => handleWheel(e, true)}
+                          className="max-w-full max-h-full cursor-crosshair"
+                          style={{
+                            cursor: activeTool === 'pan' ? 'grab' : activeTool === 'zoom' ? 'zoom-in' : 'crosshair'
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <canvas
+                    ref={canvasRef}
+                    onMouseDown={(e) => handleCanvasMouseDown(e, false)}
+                    onMouseMove={(e) => handleCanvasMouseMove(e, false)}
+                    onMouseUp={handleCanvasMouseUp}
+                    onWheel={(e) => handleWheel(e, false)}
+                    className="max-w-full max-h-full cursor-crosshair"
+                    style={{
+                      cursor: activeTool === 'pan' ? 'grab' : activeTool === 'zoom' ? 'zoom-in' : 'crosshair'
+                    }}
+                  />
+                )}
               </div>
 
-              {/* Image Navigation */}
+{/* Image Navigation */}
               {selectedStudy.images && selectedStudy.images.length > 1 && (
                 <div className="bg-gray-800 text-white p-4 w-48">
-                  <h4 className="font-medium mb-2">Images</h4>
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                  <h4 className="font-medium mb-2">Current Study Images</h4>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
                     {selectedStudy.images.map((image, index) => (
                       <div
                         key={index}
-                        onClick={() => setCurrentImage(index)}
+                        onClick={() => setCurrentStudyImage(index)}
                         className={`p-2 rounded cursor-pointer transition-colors ${
-                          currentImage === index ? 'bg-primary-600' : 'bg-gray-700 hover:bg-gray-600'
+                          currentStudyImage === index ? 'bg-primary-600' : 'bg-gray-700 hover:bg-gray-600'
                         }`}
                       >
                         <div className="text-sm font-medium">Image {index + 1}</div>
@@ -1473,6 +1665,26 @@ return (
                       </div>
                     ))}
                   </div>
+                  
+                  {comparisonMode && priorStudy && priorStudy.images && priorStudy.images.length > 1 && (
+                    <>
+                      <h4 className="font-medium mb-2 mt-4">Prior Study Images</h4>
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {priorStudy.images.map((image, index) => (
+                          <div
+                            key={index}
+                            onClick={() => setPriorStudyImage(index)}
+                            className={`p-2 rounded cursor-pointer transition-colors ${
+                              priorStudyImage === index ? 'bg-orange-600' : 'bg-gray-700 hover:bg-gray-600'
+                            }`}
+                          >
+                            <div className="text-sm font-medium">Prior {index + 1}</div>
+                            <div className="text-xs text-gray-300">{image.seriesDescription}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -1488,23 +1700,26 @@ return (
                 </div>
               </div>
               
-              <div className="flex items-center space-x-2">
+<div className="flex items-center space-x-2">
                 {selectedStudy.images && selectedStudy.images.length > 1 && (
                   <>
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setCurrentImage(Math.max(0, currentImage - 1))}
-                      disabled={currentImage === 0}
+                      onClick={() => setCurrentStudyImage(Math.max(0, currentStudyImage - 1))}
+                      disabled={currentStudyImage === 0}
                       className="text-white hover:bg-gray-700"
                     >
                       <ApperIcon name="ChevronLeft" size={16} />
                     </Button>
+                    <span className="text-sm text-gray-300">
+                      {currentStudyImage + 1} / {selectedStudy.images.length}
+                    </span>
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setCurrentImage(Math.min(selectedStudy.images.length - 1, currentImage + 1))}
-                      disabled={currentImage === selectedStudy.images.length - 1}
+                      onClick={() => setCurrentStudyImage(Math.min(selectedStudy.images.length - 1, currentStudyImage + 1))}
+                      disabled={currentStudyImage === selectedStudy.images.length - 1}
                       className="text-white hover:bg-gray-700"
                     >
                       <ApperIcon name="ChevronRight" size={16} />
@@ -1512,6 +1727,62 @@ return (
                   </>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+)}
+
+      {/* Study Selector Modal */}
+      {showStudySelector && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60 p-4">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="p-6 border-b">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold">Select Prior Study for Comparison</h2>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowStudySelector(false)}
+                >
+                  <ApperIcon name="X" size={16} />
+                </Button>
+              </div>
+              <p className="text-gray-600 mt-1">
+                Current Study: {selectedStudy.studyDescription} ({selectedStudy.studyDate})
+              </p>
+            </div>
+
+            <div className="p-6">
+              {availableStudies.length === 0 ? (
+                <div className="text-center py-8">
+                  <ApperIcon name="Calendar" size={48} className="mx-auto text-gray-400 mb-4" />
+                  <p className="text-gray-500">No prior studies available for this patient</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {availableStudies
+                    .sort((a, b) => new Date(b.studyDate) - new Date(a.studyDate))
+                    .map((study) => (
+                      <div
+                        key={study.Id}
+                        onClick={() => startComparison(study.Id)}
+                        className="p-4 border border-gray-200 rounded-lg hover:border-primary-300 cursor-pointer transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="font-medium text-gray-900">{study.studyDescription}</h3>
+                            <p className="text-sm text-gray-500">{study.modality} - {study.studyDate}</p>
+                            <p className="text-xs text-gray-400">{study.images?.length || 0} images</p>
+                          </div>
+                          <div className="flex items-center text-primary-600">
+                            <ApperIcon name="Eye" size={16} className="mr-1" />
+                            <span className="text-sm">Compare</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
