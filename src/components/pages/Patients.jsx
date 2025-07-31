@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
 import { toast } from "react-toastify"
 import ApperIcon from "@/components/ApperIcon"
 import Button from "@/components/atoms/Button"
@@ -11,6 +12,7 @@ import Empty from "@/components/ui/Empty"
 import patientService from "@/services/api/patientService"
 
 const Patients = () => {
+  const navigate = useNavigate()
   const [patients, setPatients] = useState([])
   const [filteredPatients, setFilteredPatients] = useState([])
   const [loading, setLoading] = useState(true)
@@ -66,8 +68,8 @@ const Patients = () => {
     setIsModalOpen(true)
   }
   
-  const handleViewPatient = (patient) => {
-    toast.info(`Viewing details for ${patient.firstName} ${patient.lastName}`)
+const handleViewPatient = (patient) => {
+    navigate(`/patients/${patient.Id}`)
   }
   
   const handleSubmitPatient = async (patientData) => {

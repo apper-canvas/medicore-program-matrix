@@ -4,6 +4,7 @@ import { ToastContainer } from "react-toastify"
 import Layout from "@/components/organisms/Layout"
 import Dashboard from "@/components/pages/Dashboard"
 import Patients from "@/components/pages/Patients"
+import PatientProfile from "@/components/pages/PatientProfile"
 import Appointments from "@/components/pages/Appointments"
 import Clinical from "@/components/pages/Clinical"
 import Laboratory from "@/components/pages/Laboratory"
@@ -20,7 +21,8 @@ function App() {
         <Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={<Dashboard />} />
-            <Route path="patients" element={<Patients />} />
+<Route path="patients" element={<Patients />} />
+            <Route path="patients/:patientId" element={<PatientProfile />} />
             <Route path="appointments" element={<Appointments />} />
             <Route path="clinical" element={<Clinical />} />
             <Route path="laboratory" element={<Laboratory />} />

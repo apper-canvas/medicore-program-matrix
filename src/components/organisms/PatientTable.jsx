@@ -65,7 +65,11 @@ const PatientTable = ({ patients, onEdit, onView }) => {
               const age = new Date().getFullYear() - new Date(patient.dateOfBirth).getFullYear()
               
               return (
-                <tr key={patient.Id} className="hover:bg-gray-50 transition-colors duration-200">
+<tr 
+                  key={patient.Id} 
+                  className="hover:bg-gray-50 transition-colors duration-200 cursor-pointer"
+                  onClick={() => onView(patient)}
+                >
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary-600">
                     #{patient.Id.toString().padStart(4, "0")}
                   </td>
@@ -96,14 +100,22 @@ const PatientTable = ({ patients, onEdit, onView }) => {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => onView(patient)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onView(patient)
+                      }}
+                      title="View Patient Profile"
                     >
                       <ApperIcon name="Eye" className="h-4 w-4" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => onEdit(patient)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onEdit(patient)
+                      }}
+                      title="Edit Patient"
                     >
                       <ApperIcon name="Edit" className="h-4 w-4" />
                     </Button>

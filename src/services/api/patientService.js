@@ -62,8 +62,22 @@ class PatientService {
       throw new Error("Patient not found")
     }
     
-    const deletedPatient = this.patients.splice(index, 1)[0]
+const deletedPatient = this.patients.splice(index, 1)[0]
     return { ...deletedPatient }
+  }
+
+  async getMedicalHistory(patientId) {
+    await new Promise(resolve => setTimeout(resolve, 200))
+    // This would typically call the medical history service
+    // For now, return empty array as medical history is handled by separate service
+    return []
+  }
+
+  async updateMedicalHistory(patientId, medicalHistoryData) {
+    await new Promise(resolve => setTimeout(resolve, 300))
+    // This would typically update medical history through separate service
+    // For now, just return the data
+    return medicalHistoryData
   }
 }
 
