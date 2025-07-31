@@ -1,0 +1,86 @@
+[
+  {
+    "Id": 1,
+    "name": "Blue Cross Blue Shield",
+    "type": "PPO",
+    "coveragePercentage": 80,
+    "deductible": 1000,
+    "copay": 25,
+    "active": true,
+    "payerId": "BCBS001",
+    "eligibilityUrl": "https://api.bcbs.com/eligibility",
+    "claimsUrl": "https://api.bcbs.com/claims",
+    "preAuthRequired": true,
+    "networkProviders": ["PROV001", "PROV002", "PROV003"],
+    "feeSchedule": "BCBS_2024",
+    "processingTime": "3-5 business days",
+    "contactInfo": {
+      "phone": "1-800-BCBS-123",
+      "email": "provider@bcbs.com",
+      "website": "https://www.bcbs.com"
+    }
+  },
+  {
+    "Id": 2,
+    "name": "Aetna Health",
+    "type": "HMO",
+    "coveragePercentage": 90,
+    "deductible": 500,
+    "copay": 15,
+    "active": true,
+    "payerId": "AETNA001",
+    "eligibilityUrl": "https://api.aetna.com/eligibility",
+    "claimsUrl": "https://api.aetna.com/claims",
+    "preAuthRequired": false,
+    "networkProviders": ["PROV001", "PROV004", "PROV005"],
+    "feeSchedule": "AETNA_2024",
+    "processingTime": "2-3 business days",
+    "contactInfo": {
+      "phone": "1-800-AETNA-23",
+      "email": "provider@aetna.com",
+      "website": "https://www.aetna.com"
+    }
+  },
+  {
+    "Id": 3,
+    "name": "United Healthcare",
+    "type": "PPO",
+    "coveragePercentage": 85,
+    "deductible": 750,
+    "copay": 20,
+    "active": true,
+    "payerId": "UHC001",
+    "eligibilityUrl": "https://api.uhc.com/eligibility",
+    "claimsUrl": "https://api.uhc.com/claims",
+    "preAuthRequired": true,
+    "networkProviders": ["PROV001", "PROV002", "PROV006"],
+    "feeSchedule": "UHC_2024",
+    "processingTime": "4-6 business days",
+    "contactInfo": {
+      "phone": "1-800-UHC-4567",
+      "email": "provider@uhc.com",
+      "website": "https://www.uhc.com"
+    }
+  },
+  {
+    "Id": 4,
+    "name": "Cigna Health",
+    "type": "EPO",
+    "coveragePercentage": 75,
+    "deductible": 1200,
+    "copay": 30,
+    "active": true,
+    "payerId": "CIGNA001",
+    "eligibilityUrl": "https://api.cigna.com/eligibility",
+    "claimsUrl": "https://api.cigna.com/claims",
+    "preAuthRequired": true,
+    "networkProviders": ["PROV003", "PROV005", "PROV007"],
+    "feeSchedule": "CIGNA_2024",
+    "processingTime": "3-4 business days",
+    "contactInfo": {
+      "phone": "1-800-CIGNA-24",
+      "email": "provider@cigna.com",
+      "website": "https://www.cigna.com"
+    }
+  }
+]

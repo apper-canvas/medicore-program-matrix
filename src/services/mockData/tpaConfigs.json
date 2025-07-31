@@ -1,0 +1,113 @@
+[
+  {
+    "Id": 1,
+    "name": "Corporate Health TPA",
+    "type": "Corporate Insurance",
+    "code": "CHTP001",
+    "feeSchedule": "Corporate_2024",
+    "processingTime": "2-3 business days",
+    "autoProcess": true,
+    "active": true,
+    "contactInfo": {
+      "phone": "1-800-CORP-TPA",
+      "email": "claims@corporatehealth.com",
+      "website": "https://corporatehealth.com"
+    },
+    "apiConfig": {
+      "baseUrl": "https://api.corporatehealth.com",
+      "authToken": "CHTP_TOKEN_123",
+      "endpoints": {
+        "eligibility": "/eligibility",
+        "claims": "/claims",
+        "preAuth": "/preauth"
+      }
+    },
+    "feeMultipliers": {
+      "Laboratory": 0.95,
+      "Pharmacy": 0.90,
+      "Radiology": 1.00,
+      "Emergency": 0.85,
+      "Surgery": 1.10,
+      "Cardiology": 1.05
+    },
+    "corporateClients": [
+      { "clientId": "CORP001", "name": "TechCorp Industries", "employees": 2500 },
+      { "clientId": "CORP002", "name": "MegaManufacturing", "employees": 1800 },
+      { "clientId": "CORP003", "name": "ServiceSolutions Inc", "employees": 950 }
+    ]
+  },
+  {
+    "Id": 2,
+    "name": "Enterprise Care TPA",
+    "type": "Enterprise Insurance",
+    "code": "ECTP002",
+    "feeSchedule": "Enterprise_2024",
+    "processingTime": "1-2 business days",
+    "autoProcess": false,
+    "active": true,
+    "contactInfo": {
+      "phone": "1-800-ENT-CARE",
+      "email": "processing@enterprisecare.com",
+      "website": "https://enterprisecare.com"
+    },
+    "apiConfig": {
+      "baseUrl": "https://api.enterprisecare.com",
+      "authToken": "ECTP_TOKEN_456",
+      "endpoints": {
+        "eligibility": "/verify",
+        "claims": "/submit",
+        "preAuth": "/authorize"
+      }
+    },
+    "feeMultipliers": {
+      "Laboratory": 1.00,
+      "Pharmacy": 0.95,
+      "Radiology": 1.05,
+      "Emergency": 0.80,
+      "Surgery": 1.15,
+      "Cardiology": 1.10
+    },
+    "corporateClients": [
+      { "clientId": "ENT001", "name": "GlobalTech Solutions", "employees": 5000 },
+      { "clientId": "ENT002", "name": "Innovation Labs", "employees": 750 },
+      { "clientId": "ENT003", "name": "Enterprise Systems", "employees": 3200 }
+    ]
+  },
+  {
+    "Id": 3,
+    "name": "Group Health TPA",
+    "type": "Group Insurance",
+    "code": "GHTP003",
+    "feeSchedule": "Group_2024",
+    "processingTime": "3-5 business days",
+    "autoProcess": true,
+    "active": true,
+    "contactInfo": {
+      "phone": "1-800-GRP-HLTH",
+      "email": "claims@grouphealth.com",
+      "website": "https://grouphealth.com"
+    },
+    "apiConfig": {
+      "baseUrl": "https://api.grouphealth.com",
+      "authToken": "GHTP_TOKEN_789",
+      "endpoints": {
+        "eligibility": "/check",
+        "claims": "/process",
+        "preAuth": "/request"
+      }
+    },
+    "feeMultipliers": {
+      "Laboratory": 0.92,
+      "Pharmacy": 0.88,
+      "Radiology": 0.98,
+      "Emergency": 0.82,
+      "Surgery": 1.08,
+      "Cardiology": 1.02
+    },
+    "corporateClients": [
+      { "clientId": "GRP001", "name": "Small Business Alliance", "employees": 500 },
+      { "clientId": "GRP002", "name": "Professional Services Group", "employees": 1200 },
+      { "clientId": "GRP003", "name": "Retail Chain Collective", "employees": 2800 }
+    ]
+  }
+]
