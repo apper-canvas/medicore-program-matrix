@@ -25,11 +25,13 @@ const mockAppointments = [
     departmentId: 2,
     departmentName: "Neurology",
     date: "2024-01-15",
-    time: "10:30",
+time: "10:30",
     duration: 45,
     type: "Follow-up",
-    status: "checked-in",
+    status: "in-progress",
     notes: "Follow-up appointment",
+    checkedInAt: "2024-01-15T10:15:00Z",
+    startedAt: "2024-01-15T10:35:00Z",
     createdAt: "2024-01-12T14:30:00Z"
   },
   {
@@ -41,11 +43,14 @@ const mockAppointments = [
     departmentId: 1,
     departmentName: "Cardiology",
     date: "2024-01-15",
-    time: "14:00",
+time: "14:00",
     duration: 30,
     type: "Consultation",
     status: "completed",
     notes: "Initial consultation",
+    checkedInAt: "2024-01-15T13:45:00Z",
+    startedAt: "2024-01-15T14:05:00Z",
+    completedAt: "2024-01-15T14:30:00Z",
     createdAt: "2024-01-13T09:15:00Z"
   },
   {
@@ -162,14 +167,36 @@ class AppointmentService {
     
     const deletedAppointment = this.appointments.splice(index, 1)[0];
     return { ...deletedAppointment };
-  }
+}
 
   async checkIn(id) {
-    return await this.updateStatus(id, "checked-in", "Patient checked in");
+    const appointment = await this.getById(id);
+    const updateData = {
+      status: "checked-in",
+      notes: "Patient checked in",
+      checkedInAt: new Date().toISOString()
+    };
+    return await this.update(id, updateData);
   }
 
+  async startAppointment(id) {
+    const appointment = await this.getById(id);
+    const updateData = {
+      status: "in-progress",
+      notes: "Appointment started",
+      startedAt: new Date().toISOString()
+    };
+    return await this.update(id, updateData);
+}
+
   async complete(id, notes = "") {
-    return await this.updateStatus(id, "completed", notes);
+    const appointment = await this.getById(id);
+    const updateData = {
+      status: "completed",
+      notes: notes || "Appointment completed",
+      completedAt: new Date().toISOString()
+    };
+    return await this.update(id, updateData);
   }
 
   async cancel(id, reason = "") {

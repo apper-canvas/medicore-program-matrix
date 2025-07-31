@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { toast } from "react-toastify";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, addMonths, subMonths } from "date-fns";
-import ApperIcon from "@/components/ApperIcon";
-import Card from "@/components/atoms/Card";
-import Button from "@/components/atoms/Button";
-import Badge from "@/components/atoms/Badge";
-import Loading from "@/components/ui/Loading";
-import AppointmentBookingModal from "@/components/organisms/AppointmentBookingModal";
+import { addMonths, eachDayOfInterval, endOfMonth, format, isSameDay, isToday, startOfMonth, subMonths } from "date-fns";
 import appointmentService from "@/services/api/appointmentService";
 import departmentService from "@/services/api/departmentService";
+import ApperIcon from "@/components/ApperIcon";
+import AppointmentBookingModal from "@/components/organisms/AppointmentBookingModal";
+import Loading from "@/components/ui/Loading";
+import Badge from "@/components/atoms/Badge";
+import Button from "@/components/atoms/Button";
+import Card from "@/components/atoms/Card";
 const Appointments = () => {
 const [loading, setLoading] = useState(true);
   const [appointments, setAppointments] = useState([]);
@@ -77,12 +77,16 @@ const [loading, setLoading] = useState(true);
     setSelectedDate(null);
   };
 
-  const handleQuickAction = async (appointmentId, action, reason = "") => {
+const handleQuickAction = async (appointmentId, action, reason = "") => {
     try {
       switch (action) {
         case "checkin":
           await appointmentService.checkIn(appointmentId);
           toast.success("Patient checked in successfully");
+          break;
+        case "start":
+          await appointmentService.startAppointment(appointmentId);
+          toast.success("Appointment started");
           break;
         case "complete":
           await appointmentService.complete(appointmentId, reason);
@@ -102,9 +106,10 @@ const [loading, setLoading] = useState(true);
   };
 
   const getStatusVariant = (status) => {
-    switch (status) {
+switch (status) {
       case "scheduled": return "info";
       case "checked-in": return "warning";
+      case "in-progress": return "in-progress";
       case "completed": return "success";
       case "cancelled": return "error";
       default: return "default";
@@ -297,8 +302,17 @@ const [loading, setLoading] = useState(true);
                       >
                         Check In
                       </Button>
-                    )}
+)}
                     {apt.status === "checked-in" && (
+                      <Button
+                        size="sm"
+                        variant="accent"
+                        onClick={() => handleQuickAction(apt.Id, "start")}
+                      >
+                        Start
+                      </Button>
+                    )}
+                    {apt.status === "in-progress" && (
                       <Button
                         size="sm"
                         variant="success"
