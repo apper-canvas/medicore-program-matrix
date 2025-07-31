@@ -105,8 +105,8 @@ const Dashboard = () => {
                 <span className="text-white text-xs font-bold">⚠</span>
               </div>
               <div className="flex-1">
-                <p className="text-sm font-medium text-gray-900">Pharmacy Alert</p>
-                <p className="text-xs text-gray-500">Low stock: Acetaminophen - 10 min ago</p>
+<p className="text-sm font-medium text-gray-900">Inventory Alert</p>
+                <p className="text-xs text-gray-500">Lisinopril 10mg below reorder point (12/50 units) - 8 min ago</p>
               </div>
             </div>
           </div>
