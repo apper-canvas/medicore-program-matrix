@@ -1,13 +1,13 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
-import radiologyService from "@/services/api/radiologyService";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "react-toastify";
+import radiologyService from "@/services/api/radiologyService";
 import patientService from "@/services/api/patientService";
 import ApperIcon from "@/components/ApperIcon";
 import FormField from "@/components/molecules/FormField";
+import Badge from "@/components/atoms/Badge";
 import Input from "@/components/atoms/Input";
 import Button from "@/components/atoms/Button";
 import Card from "@/components/atoms/Card";
-import Badge from "@/components/atoms/Badge";
 const Radiology = () => {
   const [activeTab, setActiveTab] = useState("queue");
   const [showOrderForm, setShowOrderForm] = useState(false);
@@ -190,41 +190,12 @@ const loadData = async () => {
 
     return (
       <span className={`px-2 py-1 rounded-full text-xs font-medium ${priorityStyles[priority] || priorityStyles.routine}`}>
+return (
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${priorityStyles[priority] || priorityStyles.routine}`}>
         {priority?.charAt(0).toUpperCase() + priority?.slice(1) || 'Routine'}
       </span>
     );
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
-      </div>
-    );
-  }
-
-const updateWorkflowStatus = async (orderId, status) => {
-    try {
-      await radiologyService.updateStatus(orderId, status);
-      toast.success(`Status updated to ${status}`);
-      loadData();
-    } catch (error) {
-      toast.error("Failed to update status");
-    }
-  };
-
-  const completePreparation = async (orderId, completedItems) => {
-    try {
-      await radiologyService.updatePreparation(orderId, completedItems);
-      toast.success("Preparation checklist updated");
-      setShowPrepModal(false);
-      loadData();
-    } catch (error) {
-      toast.error("Failed to update preparation");
-    }
-};
-
-  // DICOM Viewer Functions
+  // DICOM Viewer Functions - All hooks must be called before any early returns
   const openViewer = useCallback(async (orderId) => {
     try {
       const study = await radiologyService.getDicomStudy(orderId);
@@ -436,7 +407,38 @@ const updateWorkflowStatus = async (orderId, status) => {
       loadDicomImage(selectedStudy.images[currentImage]);
     }
   }, [selectedStudy, currentImage, loadDicomImage]);
-  return (
+
+  // Early return for loading state - placed after all hooks
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+      </div>
+    );
+  }
+
+  const updateWorkflowStatus = async (orderId, status) => {
+    try {
+      await radiologyService.updateStatus(orderId, status);
+      toast.success(`Status updated to ${status}`);
+      loadData();
+    } catch (error) {
+      toast.error("Failed to update status");
+    }
+  };
+
+  const completePreparation = async (orderId, completedItems) => {
+    try {
+      await radiologyService.updatePreparation(orderId, completedItems);
+      toast.success("Preparation checklist updated");
+      setShowPrepModal(false);
+      loadData();
+    } catch (error) {
+      toast.error("Failed to update preparation");
+    }
+  };
+
+return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -1149,9 +1151,9 @@ const updateWorkflowStatus = async (orderId, status) => {
                               {equip?.name || "Not assigned"}
                             </div>
                             {equip && (
-                              <div className="text-sm text-gray-500">{equip.location}</div>
+<div className="text-sm text-gray-500">{equip.location}</div>
                             )}
-</td>
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                             {order.status === 'completed' && (
                               <Button
@@ -1271,10 +1273,9 @@ const updateWorkflowStatus = async (orderId, status) => {
                 </Button>
               </div>
             </div>
-          </div>
+</div>
         </div>
-)}
-
+      )}
       {/* DICOM Viewer Modal */}
       {viewerOpen && selectedStudy && (
         <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center">
