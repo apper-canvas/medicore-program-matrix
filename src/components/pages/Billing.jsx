@@ -98,7 +98,7 @@ const Billing = () => {
     }
   }
 
-  const handleProcessTPA = async (chargeId) => {
+const handleProcessTPA = async (chargeId) => {
     try {
       const result = await tpaService.processCharge(chargeId)
       if (result.success) {
@@ -112,6 +112,22 @@ const Billing = () => {
     }
   }
 
+  const handleSubmitClaim = async (chargeId) => {
+    try {
+      const result = await billingService.submitClaim(chargeId)
+      if (result.success) {
+        toast.success(`Claim ${result.claimId} submitted successfully`)
+        loadData()
+        
+        // Show real-time status updates
+        toast.info('Monitoring claim status in real-time...')
+      } else {
+        toast.warning('Claim submission failed: ' + result.message)
+      }
+    } catch (error) {
+      toast.error('Failed to submit claim: ' + error.message)
+    }
+  }
   const filteredCharges = charges.filter(charge =>
     charge.patientName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     charge.department?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -282,36 +298,70 @@ const Billing = () => {
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         ${charge.amount?.toLocaleString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs rounded-full ${
-                          charge.status === 'paid' 
-                            ? 'bg-green-100 text-green-800'
-                            : charge.status === 'pending'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {charge.status}
-                        </span>
+<td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex flex-col space-y-1">
+                          <span className={`px-2 py-1 text-xs rounded-full w-fit ${
+                            charge.status === 'paid' 
+                              ? 'bg-green-100 text-green-800'
+                              : charge.status === 'pending'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {charge.status}
+                          </span>
+                          {charge.claimSubmitted && (
+                            <span className={`px-2 py-1 text-xs rounded-full w-fit ${
+                              charge.claimStatus === 'paid' 
+                                ? 'bg-green-100 text-green-800'
+                                : charge.claimStatus === 'accepted'
+                                ? 'bg-blue-100 text-blue-800'
+                                : charge.claimStatus === 'rejected'
+                                ? 'bg-red-100 text-red-800'
+                                : charge.claimStatus === 'processing'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              Claim: {charge.claimStatus}
+                            </span>
+                          )}
+                        </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                        {!charge.insuranceVerified && (
-                          <Button
-                            onClick={() => handleVerifyInsurance(charge.Id)}
-                            className="text-blue-600 hover:text-blue-900 text-xs"
-                            variant="ghost"
-                          >
-                            Verify Insurance
-                          </Button>
-                        )}
-                        {charge.insuranceVerified && !charge.tpaProcessed && charge.tpaId && (
-                          <Button
-                            onClick={() => handleProcessTPA(charge.Id)}
-                            className="text-purple-600 hover:text-purple-900 text-xs"
-                            variant="ghost"
-                          >
-                            Process TPA
-                          </Button>
-                        )}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-y-2">
+                        <div className="flex flex-col space-y-1">
+                          {!charge.insuranceVerified && (
+                            <Button
+                              onClick={() => handleVerifyInsurance(charge.Id)}
+                              className="text-blue-600 hover:text-blue-900 text-xs"
+                              variant="ghost"
+                            >
+                              Verify Insurance
+                            </Button>
+                          )}
+                          {charge.insuranceVerified && !charge.tpaProcessed && charge.tpaId && (
+                            <Button
+                              onClick={() => handleProcessTPA(charge.Id)}
+                              className="text-purple-600 hover:text-purple-900 text-xs"
+                              variant="ghost"
+                            >
+                              Process TPA
+                            </Button>
+                          )}
+                          {charge.insuranceVerified && !charge.claimSubmitted && charge.icd10Code && charge.cptCode && (
+                            <Button
+                              onClick={() => handleSubmitClaim(charge.Id)}
+                              className="text-green-600 hover:text-green-900 text-xs"
+                              variant="ghost"
+                            >
+                              <ApperIcon name="Send" size={12} className="mr-1" />
+                              Submit Claim
+                            </Button>
+                          )}
+                          {charge.claimSubmitted && charge.claimId && (
+                            <div className="text-xs text-gray-500">
+                              Claim: {charge.claimId}
+                            </div>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

@@ -374,7 +374,196 @@ class BillingService {
         )
         
         resolve([...results])
+}, 300)
+    })
+  }
+
+  // Electronic Claims Submission
+  submitClaim(chargeId, clearinghouseId = 'CH001') {
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        const index = this.charges.findIndex(c => c.Id === parseInt(chargeId))
+        if (index !== -1) {
+          const charge = this.charges[index]
+          
+          // Validate claim requirements
+          if (!charge.insuranceVerified) {
+            reject(new Error('Insurance must be verified before claim submission'))
+            return
+          }
+          
+          if (!charge.icd10Code || !charge.cptCode) {
+            reject(new Error('ICD-10 and CPT codes required for claim submission'))
+            return
+          }
+          
+          const claimId = `CLM${Date.now()}`
+          
+          this.charges[index] = {
+            ...charge,
+            claimSubmitted: true,
+            claimStatus: 'submitted',
+            claimId: claimId,
+            clearinghouseId: clearinghouseId,
+            claimSubmittedAt: new Date(),
+            updatedAt: new Date()
+          }
+          
+          // Simulate real-time clearinghouse processing
+          this.simulateClearinghouseProcessing(claimId, chargeId)
+          
+          resolve({
+            success: true,
+            claimId: claimId,
+            status: 'submitted',
+            message: 'Claim submitted successfully to clearinghouse'
+          })
+        } else {
+          reject(new Error('Charge not found'))
+        }
+      }, 500)
+    })
+  }
+
+  // Simulate real-time clearinghouse processing
+  simulateClearinghouseProcessing(claimId, chargeId) {
+    // Simulate processing stages with realistic timing
+    setTimeout(() => {
+      this.updateClaimStatus(chargeId, 'processing', 'Claim received by clearinghouse')
+    }, 2000)
+    
+    setTimeout(() => {
+      this.updateClaimStatus(chargeId, 'validated', 'Claim passed initial validation')
+    }, 5000)
+    
+    setTimeout(() => {
+      // 85% success rate simulation
+      const isAccepted = Math.random() > 0.15
+      if (isAccepted) {
+        this.updateClaimStatus(chargeId, 'accepted', 'Claim accepted by payer')
+        
+        // Simulate payment processing
+        setTimeout(() => {
+          this.updateClaimStatus(chargeId, 'paid', 'Payment processed')
+          this.update(chargeId, { status: 'paid' })
+        }, 10000)
+      } else {
+        this.updateClaimStatus(chargeId, 'rejected', 'Claim rejected - missing documentation')
+      }
+    }, 8000)
+  }
+
+  // Update claim status
+  updateClaimStatus(chargeId, status, message = '') {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const index = this.charges.findIndex(c => c.Id === parseInt(chargeId))
+        if (index !== -1) {
+          this.charges[index] = {
+            ...this.charges[index],
+            claimStatus: status,
+            claimStatusMessage: message,
+            claimStatusUpdatedAt: new Date(),
+            updatedAt: new Date()
+          }
+          resolve({...this.charges[index]})
+        }
+      }, 100)
+    })
+  }
+
+  // Get claims by status
+  getClaimsByStatus(status) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const claims = this.charges.filter(c => c.claimSubmitted && c.claimStatus === status)
+        resolve([...claims])
       }, 300)
+    })
+  }
+
+  // Get all claims
+  getAllClaims() {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const claims = this.charges.filter(c => c.claimSubmitted)
+        resolve([...claims])
+      }, 300)
+    })
+  }
+
+  // Process claim response from clearinghouse
+  processClaimResponse(claimId, responseData) {
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        const index = this.charges.findIndex(c => c.claimId === claimId)
+        if (index !== -1) {
+          this.charges[index] = {
+            ...this.charges[index],
+            claimStatus: responseData.status,
+            claimStatusMessage: responseData.message,
+            claimResponseData: responseData,
+            updatedAt: new Date()
+          }
+          
+          // Update charge status if claim is paid
+          if (responseData.status === 'paid') {
+            this.charges[index].status = 'paid'
+          }
+          
+          resolve({...this.charges[index]})
+        } else {
+          reject(new Error('Claim not found'))
+        }
+      }, 300)
+    })
+  }
+
+  // Generate claims report
+  generateClaimsReport(dateFrom, dateTo, filters = {}) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        let claims = this.charges.filter(c => c.claimSubmitted)
+        
+        // Filter by date range
+        if (dateFrom) {
+          claims = claims.filter(c => 
+            new Date(c.claimSubmittedAt) >= new Date(dateFrom)
+          )
+        }
+        
+        if (dateTo) {
+          claims = claims.filter(c => 
+            new Date(c.claimSubmittedAt) <= new Date(dateTo)
+          )
+        }
+        
+        // Apply additional filters
+        if (filters.status) {
+          claims = claims.filter(c => c.claimStatus === filters.status)
+        }
+        
+        if (filters.clearinghouse) {
+          claims = claims.filter(c => c.clearinghouseId === filters.clearinghouse)
+        }
+        
+        // Calculate summary
+        const summary = {
+          totalClaims: claims.length,
+          submittedClaims: claims.filter(c => c.claimStatus === 'submitted').length,
+          processingClaims: claims.filter(c => c.claimStatus === 'processing').length,
+          acceptedClaims: claims.filter(c => c.claimStatus === 'accepted').length,
+          rejectedClaims: claims.filter(c => c.claimStatus === 'rejected').length,
+          paidClaims: claims.filter(c => c.claimStatus === 'paid').length,
+          totalClaimAmount: claims.reduce((sum, c) => sum + c.amount, 0),
+          paidAmount: claims.filter(c => c.claimStatus === 'paid').reduce((sum, c) => sum + c.amount, 0)
+        }
+        
+        resolve({
+          claims,
+          summary
+        })
+      }, 500)
     })
   }
 }
