@@ -15,6 +15,8 @@ import patientService from "@/services/api/patientService"
 import medicalHistoryService from "@/services/api/medicalHistoryService"
 import vitalsService from "@/services/api/vitalsService"
 import icd10Service from "@/services/api/icd10Service"
+import medicationService from "@/services/api/medicationService"
+import allergyService from "@/services/api/allergyService"
 import { cn } from "@/utils/cn"
 
 const PatientProfile = () => {
@@ -26,15 +28,21 @@ const PatientProfile = () => {
   const [medicalHistory, setMedicalHistory] = useState([])
   const [vitals, setVitals] = useState([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
+const [error, setError] = useState("")
   const [activeTab, setActiveTab] = useState("medical-history")
   const [showAddForm, setShowAddForm] = useState(false)
   const [showVitalsForm, setShowVitalsForm] = useState(false)
+  const [showMedicationForm, setShowMedicationForm] = useState(false)
+  const [showAllergyForm, setShowAllergyForm] = useState(false)
   const [editingEntry, setEditingEntry] = useState(null)
   const [editingVital, setEditingVital] = useState(null)
+  const [editingMedication, setEditingMedication] = useState(null)
+  const [editingAllergy, setEditingAllergy] = useState(null)
   const [searchDiagnosis, setSearchDiagnosis] = useState("")
   const [diagnosisOptions, setDiagnosisOptions] = useState([])
-  
+  const [medications, setMedications] = useState([])
+  const [allergies, setAllergies] = useState([])
+  const [drugInteractions, setDrugInteractions] = useState([])
   // Form state
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -63,6 +71,8 @@ const PatientProfile = () => {
 const tabs = [
     { id: "medical-history", label: "Medical History", icon: "FileText" },
     { id: "vitals", label: "Vitals", icon: "Activity" },
+    { id: "medications", label: "Current Medications", icon: "Pill" },
+    { id: "allergies", label: "Allergies & Alerts", icon: "AlertTriangle" },
     { id: "demographics", label: "Demographics", icon: "User" },
     { id: "insurance", label: "Insurance", icon: "Shield" },
     { id: "emergency", label: "Emergency Contact", icon: "Phone" }
@@ -86,14 +96,18 @@ const tabs = [
 const loadPatientData = async () => {
     try {
       setLoading(true)
-      const [patientData, historyData, vitalsData] = await Promise.all([
+      const [patientData, historyData, vitalsData, medicationsData, allergiesData] = await Promise.all([
         patientService.getById(patientId),
         medicalHistoryService.getByPatientId(patientId),
-        vitalsService.getByPatientId(patientId)
+        vitalsService.getByPatientId(patientId),
+        medicationService.getByPatientId(patientId),
+        allergyService.getByPatientId(patientId)
       ])
       setPatient(patientData)
       setMedicalHistory(historyData)
       setVitals(vitalsData)
+      setMedications(medicationsData)
+      setAllergies(allergiesData)
     } catch (err) {
       setError(err.message)
       toast.error("Failed to load patient data")
@@ -296,7 +310,7 @@ const handleFormSubmit = async (e) => {
     }
   }
 
-  const getVitalStatus = (value, field) => {
+const getVitalStatus = (value, field) => {
     if (!value) return { status: 'normal', color: 'text-gray-500' }
     
     const normalRanges = vitalsService.getNormalRanges()
@@ -326,6 +340,158 @@ const handleFormSubmit = async (e) => {
     if (alert.toLowerCase().includes("allergy")) return "error"
     if (alert.toLowerCase().includes("diabetes") || alert.toLowerCase().includes("heart")) return "warning"
     return "info"
+  }
+
+  // Medication Management Functions
+  const handleAddMedication = () => {
+    setEditingMedication(null)
+    setShowMedicationForm(true)
+  }
+
+  const handleEditMedication = (medication) => {
+    setEditingMedication(medication)
+    setShowMedicationForm(true)
+  }
+
+  const handleDeleteMedication = async (medicationId) => {
+    if (!window.confirm("Are you sure you want to delete this medication?")) return
+    
+    try {
+      await medicationService.delete(medicationId)
+      setMedications(prev => prev.filter(med => med.Id !== medicationId))
+      toast.success("Medication deleted successfully")
+    } catch (err) {
+      toast.error("Failed to delete medication")
+    }
+  }
+
+  const handleMedicationSubmit = async (e) => {
+    e.preventDefault()
+    const formData = new FormData(e.target)
+    
+    const medicationData = {
+      patientId: parseInt(patientId),
+      drugName: formData.get("drugName"),
+      dosage: formData.get("dosage"),
+      frequency: formData.get("frequency"),
+      route: formData.get("route"),
+      startDate: formData.get("startDate"),
+      endDate: formData.get("endDate") || null,
+      prescribingDoctor: formData.get("prescribingDoctor"),
+      instructions: formData.get("instructions"),
+      indication: formData.get("indication")
+    }
+
+    try {
+      // Check for drug interactions
+      const interactions = await medicationService.checkInteractions(patientId, medicationData.drugName)
+      if (interactions.length > 0) {
+        const proceed = window.confirm(
+          `Warning: Potential drug interactions detected:\n${interactions.map(i => `- ${i.description}`).join('\n')}\n\nDo you want to continue?`
+        )
+        if (!proceed) return
+      }
+
+      // Check for allergies
+      const allergyAlert = allergies.find(allergy => 
+        allergy.allergen.toLowerCase().includes(medicationData.drugName.toLowerCase()) ||
+        medicationData.drugName.toLowerCase().includes(allergy.allergen.toLowerCase())
+      )
+      
+      if (allergyAlert) {
+        const proceed = window.confirm(
+          `ALLERGY ALERT: Patient has a known allergy to ${allergyAlert.allergen} (${allergyAlert.severity})\n\nDo you want to continue?`
+        )
+        if (!proceed) return
+      }
+
+      let result
+      if (editingMedication) {
+        result = await medicationService.update(editingMedication.Id, medicationData)
+        setMedications(prev => prev.map(med => med.Id === editingMedication.Id ? result : med))
+        toast.success("Medication updated successfully")
+      } else {
+        result = await medicationService.create(medicationData)
+        setMedications(prev => [...prev, result])
+        toast.success("Medication added successfully")
+      }
+
+      setShowMedicationForm(false)
+      setEditingMedication(null)
+    } catch (err) {
+      toast.error("Failed to save medication")
+    }
+  }
+
+  // Allergy Management Functions
+  const handleAddAllergy = () => {
+    setEditingAllergy(null)
+    setShowAllergyForm(true)
+  }
+
+  const handleEditAllergy = (allergy) => {
+    setEditingAllergy(allergy)
+    setShowAllergyForm(true)
+  }
+
+  const handleDeleteAllergy = async (allergyId) => {
+    if (!window.confirm("Are you sure you want to delete this allergy record?")) return
+    
+    try {
+      await allergyService.delete(allergyId)
+      setAllergies(prev => prev.filter(allergy => allergy.Id !== allergyId))
+      toast.success("Allergy record deleted successfully")
+    } catch (err) {
+      toast.error("Failed to delete allergy record")
+    }
+  }
+
+  const handleAllergySubmit = async (e) => {
+    e.preventDefault()
+    const formData = new FormData(e.target)
+    
+    const allergyData = {
+      patientId: parseInt(patientId),
+      allergen: formData.get("allergen"),
+      reaction: formData.get("reaction"),
+      severity: formData.get("severity"),
+      onsetDate: formData.get("onsetDate") || null,
+      notes: formData.get("notes")
+    }
+
+    try {
+      let result
+      if (editingAllergy) {
+        result = await allergyService.update(editingAllergy.Id, allergyData)
+        setAllergies(prev => prev.map(allergy => allergy.Id === editingAllergy.Id ? result : allergy))
+        toast.success("Allergy record updated successfully")
+      } else {
+        result = await allergyService.create(allergyData)
+        setAllergies(prev => [...prev, result])
+        toast.success("Allergy record added successfully")
+      }
+
+      setShowAllergyForm(false)
+      setEditingAllergy(null)
+    } catch (err) {
+      toast.error("Failed to save allergy record")
+    }
+  }
+
+  const getSeverityVariant = (severity) => {
+    switch (severity?.toLowerCase()) {
+      case "severe": return "critical"
+      case "moderate": return "warning"
+      case "mild": return "info"
+      default: return "secondary"
+    }
+  }
+
+  const getMedicationStatusVariant = (endDate) => {
+    if (!endDate) return "active"
+    const end = new Date(endDate)
+    const now = new Date()
+    return end > now ? "active" : "inactive"
   }
 
   if (loading) return <Loading />
@@ -643,7 +809,398 @@ const handleFormSubmit = async (e) => {
           </Card>
         </div>
       )}
+{/* Medications Tab */}
+        {activeTab === "medications" && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-900">Current Medications</h3>
+              <Button onClick={handleAddMedication} className="flex items-center gap-2">
+                <ApperIcon name="Plus" size={16} />
+                Add Medication
+              </Button>
+            </div>
 
+            {medications.length === 0 ? (
+              <Card className="text-center py-12">
+                <ApperIcon name="Pill" size={48} className="mx-auto text-gray-400 mb-4" />
+                <p className="text-gray-500">No medications recorded</p>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {medications.map((medication) => (
+                  <Card key={medication.Id} className="p-4">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h4 className="font-semibold text-gray-900">{medication.drugName}</h4>
+                          <Badge variant={getMedicationStatusVariant(medication.endDate)}>
+                            {medication.endDate && new Date(medication.endDate) < new Date() ? "Discontinued" : "Active"}
+                          </Badge>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                          <div>
+                            <span className="font-medium text-gray-700">Dosage:</span>
+                            <p className="text-gray-600">{medication.dosage}</p>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-700">Frequency:</span>
+                            <p className="text-gray-600">{medication.frequency}</p>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-700">Start Date:</span>
+                            <p className="text-gray-600">{format(new Date(medication.startDate), 'MMM dd, yyyy')}</p>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-700">Prescribing Doctor:</span>
+                            <p className="text-gray-600">{medication.prescribingDoctor}</p>
+                          </div>
+                        </div>
+                        {medication.instructions && (
+                          <div className="mt-2">
+                            <span className="font-medium text-gray-700">Instructions:</span>
+                            <p className="text-gray-600">{medication.instructions}</p>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-2 ml-4">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditMedication(medication)}
+                        >
+                          <ApperIcon name="Edit" size={16} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteMedication(medication.Id)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <ApperIcon name="Trash2" size={16} />
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* Add/Edit Medication Modal */}
+            {showMedicationForm && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                  <form onSubmit={handleMedicationSubmit} className="p-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-semibold">
+                        {editingMedication ? "Edit Medication" : "Add New Medication"}
+                      </h3>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowMedicationForm(false)}
+                      >
+                        <ApperIcon name="X" size={20} />
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="drugName">Drug Name *</Label>
+                        <Input
+                          id="drugName"
+                          name="drugName"
+                          defaultValue={editingMedication?.drugName || ""}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="dosage">Dosage *</Label>
+                        <Input
+                          id="dosage"
+                          name="dosage"
+                          placeholder="e.g., 500mg"
+                          defaultValue={editingMedication?.dosage || ""}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="frequency">Frequency *</Label>
+                        <select
+                          id="frequency"
+                          name="frequency"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          defaultValue={editingMedication?.frequency || ""}
+                          required
+                        >
+                          <option value="">Select frequency</option>
+                          <option value="Once daily">Once daily</option>
+                          <option value="Twice daily">Twice daily</option>
+                          <option value="Three times daily">Three times daily</option>
+                          <option value="Four times daily">Four times daily</option>
+                          <option value="Every 4 hours">Every 4 hours</option>
+                          <option value="Every 6 hours">Every 6 hours</option>
+                          <option value="Every 8 hours">Every 8 hours</option>
+                          <option value="Every 12 hours">Every 12 hours</option>
+                          <option value="As needed">As needed</option>
+                          <option value="Weekly">Weekly</option>
+                          <option value="Monthly">Monthly</option>
+                        </select>
+                      </div>
+                      <div>
+                        <Label htmlFor="route">Route</Label>
+                        <select
+                          id="route"
+                          name="route"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          defaultValue={editingMedication?.route || "Oral"}
+                        >
+                          <option value="Oral">Oral</option>
+                          <option value="IV">Intravenous (IV)</option>
+                          <option value="IM">Intramuscular (IM)</option>
+                          <option value="SC">Subcutaneous (SC)</option>
+                          <option value="Topical">Topical</option>
+                          <option value="Inhalation">Inhalation</option>
+                          <option value="Sublingual">Sublingual</option>
+                          <option value="Rectal">Rectal</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                      <div>
+                        <Label htmlFor="startDate">Start Date *</Label>
+                        <Input
+                          id="startDate"
+                          name="startDate"
+                          type="date"
+                          defaultValue={editingMedication?.startDate ? format(new Date(editingMedication.startDate), 'yyyy-MM-dd') : ""}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="endDate">End Date</Label>
+                        <Input
+                          id="endDate"
+                          name="endDate"
+                          type="date"
+                          defaultValue={editingMedication?.endDate ? format(new Date(editingMedication.endDate), 'yyyy-MM-dd') : ""}
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <Label htmlFor="prescribingDoctor">Prescribing Doctor *</Label>
+                        <Input
+                          id="prescribingDoctor"
+                          name="prescribingDoctor"
+                          defaultValue={editingMedication?.prescribingDoctor || ""}
+                          required
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <Label htmlFor="indication">Indication</Label>
+                        <Input
+                          id="indication"
+                          name="indication"
+                          placeholder="Reason for prescription"
+                          defaultValue={editingMedication?.indication || ""}
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <Label htmlFor="instructions">Instructions</Label>
+                        <textarea
+                          id="instructions"
+                          name="instructions"
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          placeholder="Special instructions or notes"
+                          defaultValue={editingMedication?.instructions || ""}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 mt-6">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setShowMedicationForm(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button type="submit">
+                        {editingMedication ? "Update Medication" : "Add Medication"}
+                      </Button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Allergies & Alerts Tab */}
+        {activeTab === "allergies" && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-900">Allergies & Medical Alerts</h3>
+              <Button onClick={handleAddAllergy} className="flex items-center gap-2">
+                <ApperIcon name="Plus" size={16} />
+                Add Allergy
+              </Button>
+            </div>
+
+            {allergies.length === 0 ? (
+              <Card className="text-center py-12">
+                <ApperIcon name="AlertTriangle" size={48} className="mx-auto text-gray-400 mb-4" />
+                <p className="text-gray-500">No allergies or alerts recorded</p>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {allergies.map((allergy) => (
+                  <Card key={allergy.Id} className="p-4">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <ApperIcon name="AlertTriangle" size={20} className="text-red-500" />
+                          <h4 className="font-semibold text-gray-900">{allergy.allergen}</h4>
+                          <Badge variant={getSeverityVariant(allergy.severity)}>
+                            {allergy.severity} Severity
+                          </Badge>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                          <div>
+                            <span className="font-medium text-gray-700">Reaction:</span>
+                            <p className="text-gray-600">{allergy.reaction}</p>
+                          </div>
+                          {allergy.onsetDate && (
+                            <div>
+                              <span className="font-medium text-gray-700">Onset Date:</span>
+                              <p className="text-gray-600">{format(new Date(allergy.onsetDate), 'MMM dd, yyyy')}</p>
+                            </div>
+                          )}
+                        </div>
+                        {allergy.notes && (
+                          <div className="mt-2">
+                            <span className="font-medium text-gray-700">Notes:</span>
+                            <p className="text-gray-600">{allergy.notes}</p>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-2 ml-4">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditAllergy(allergy)}
+                        >
+                          <ApperIcon name="Edit" size={16} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteAllergy(allergy.Id)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <ApperIcon name="Trash2" size={16} />
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* Add/Edit Allergy Modal */}
+            {showAllergyForm && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-lg max-w-xl w-full max-h-[90vh] overflow-y-auto">
+                  <form onSubmit={handleAllergySubmit} className="p-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-semibold">
+                        {editingAllergy ? "Edit Allergy" : "Add New Allergy"}
+                      </h3>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowAllergyForm(false)}
+                      >
+                        <ApperIcon name="X" size={20} />
+                      </Button>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="allergen">Allergen *</Label>
+                        <Input
+                          id="allergen"
+                          name="allergen"
+                          placeholder="e.g., Penicillin, Latex, Shellfish"
+                          defaultValue={editingAllergy?.allergen || ""}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="reaction">Reaction *</Label>
+                        <Input
+                          id="reaction"
+                          name="reaction"
+                          placeholder="e.g., Rash, Anaphylaxis, Swelling"
+                          defaultValue={editingAllergy?.reaction || ""}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="severity">Severity *</Label>
+                        <select
+                          id="severity"
+                          name="severity"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          defaultValue={editingAllergy?.severity || ""}
+                          required
+                        >
+                          <option value="">Select severity</option>
+                          <option value="Mild">Mild</option>
+                          <option value="Moderate">Moderate</option>
+                          <option value="Severe">Severe</option>
+                        </select>
+                      </div>
+                      <div>
+                        <Label htmlFor="onsetDate">Onset Date</Label>
+                        <Input
+                          id="onsetDate"
+                          name="onsetDate"
+                          type="date"
+                          defaultValue={editingAllergy?.onsetDate ? format(new Date(editingAllergy.onsetDate), 'yyyy-MM-dd') : ""}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="notes">Notes</Label>
+                        <textarea
+                          id="notes"
+                          name="notes"
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          placeholder="Additional notes or special considerations"
+                          defaultValue={editingAllergy?.notes || ""}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 mt-6">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setShowAllergyForm(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button type="submit">
+                        {editingAllergy ? "Update Allergy" : "Add Allergy"}
+                      </Button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       {activeTab === "demographics" && (
         <Card className="p-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-6">Demographics</h2>
@@ -991,7 +1548,7 @@ const handleFormSubmit = async (e) => {
           </div>
         </div>
       )}
-    </div>
+</div>
   )
 }
 
