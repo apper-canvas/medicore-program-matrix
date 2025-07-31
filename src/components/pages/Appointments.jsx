@@ -3,41 +3,56 @@ import { toast } from "react-toastify";
 import { addMonths, eachDayOfInterval, endOfMonth, format, isSameDay, isToday, startOfMonth, subMonths } from "date-fns";
 import appointmentService from "@/services/api/appointmentService";
 import departmentService from "@/services/api/departmentService";
+import doctorService from "@/services/api/doctorService";
 import ApperIcon from "@/components/ApperIcon";
 import AppointmentBookingModal from "@/components/organisms/AppointmentBookingModal";
+import SearchBar from "@/components/molecules/SearchBar";
 import Loading from "@/components/ui/Loading";
 import Badge from "@/components/atoms/Badge";
 import Button from "@/components/atoms/Button";
 import Card from "@/components/atoms/Card";
+import Input from "@/components/atoms/Input";
 const Appointments = () => {
 const [loading, setLoading] = useState(true);
   const [appointments, setAppointments] = useState([]);
+  const [filteredAppointments, setFilteredAppointments] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [doctors, setDoctors] = useState([]);
   const [todaysAppointments, setTodaysAppointments] = useState([]);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [viewMode, setViewMode] = useState("month"); // month or week
   const [calendarDays, setCalendarDays] = useState([]);
+  
+  // Filter states
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState("");
+  const [selectedDoctor, setSelectedDoctor] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState("");
+  const [dateRangeStart, setDateRangeStart] = useState("");
+  const [dateRangeEnd, setDateRangeEnd] = useState("");
 
   useEffect(() => {
     loadData();
   }, [currentDate]);
 
-  const loadData = async () => {
+const loadData = async () => {
     setLoading(true);
     try {
-      const [appointmentsData, departmentsData, todaysData] = await Promise.all([
+      const [appointmentsData, departmentsData, doctorsData, todaysData] = await Promise.all([
         appointmentService.getByDateRange(
           format(startOfMonth(currentDate), 'yyyy-MM-dd'),
           format(endOfMonth(currentDate), 'yyyy-MM-dd')
         ),
         departmentService.getAll(),
+        doctorService.getAll(),
         appointmentService.getTodaysAppointments()
       ]);
       
       setAppointments(appointmentsData);
       setDepartments(departmentsData);
+      setDoctors(doctorsData);
       setTodaysAppointments(todaysData);
       
       // Generate calendar days
@@ -53,14 +68,72 @@ const [loading, setLoading] = useState(true);
     }
   };
 
+  // Apply filters whenever filter states or appointments change
+  useEffect(() => {
+    applyFilters();
+  }, [appointments, searchTerm, selectedDepartment, selectedDoctor, selectedStatus, dateRangeStart, dateRangeEnd]);
+
+  const applyFilters = () => {
+    let filtered = [...appointments];
+
+    // Apply search filter
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      filtered = filtered.filter(apt => 
+        apt.patientName.toLowerCase().includes(searchLower) ||
+        apt.doctorName.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Apply department filter
+    if (selectedDepartment) {
+      filtered = filtered.filter(apt => apt.departmentId === parseInt(selectedDepartment));
+    }
+
+    // Apply doctor filter
+    if (selectedDoctor) {
+      filtered = filtered.filter(apt => apt.doctorId === parseInt(selectedDoctor));
+    }
+
+    // Apply status filter
+    if (selectedStatus) {
+      filtered = filtered.filter(apt => apt.status === selectedStatus);
+    }
+
+    // Apply date range filter
+    if (dateRangeStart) {
+      filtered = filtered.filter(apt => apt.date >= dateRangeStart);
+    }
+    if (dateRangeEnd) {
+      filtered = filtered.filter(apt => apt.date <= dateRangeEnd);
+    }
+
+    setFilteredAppointments(filtered);
+  };
+
+  const clearFilters = () => {
+    setSearchTerm("");
+    setSelectedDepartment("");
+    setSelectedDoctor("");
+    setSelectedStatus("");
+    setDateRangeStart("");
+    setDateRangeEnd("");
+    toast.success("Filters cleared");
+  };
+
+  const getFilteredDoctors = () => {
+    if (!selectedDepartment) return doctors;
+    return doctors.filter(doctor => doctor.departmentId === parseInt(selectedDepartment));
+  };
+
   const getDepartmentColor = (departmentId) => {
     const department = departments.find(d => d.Id === departmentId);
     return department?.color || "#6B7280";
   };
 
-  const getAppointmentsForDate = (date) => {
+const getAppointmentsForDate = (date) => {
     const dateStr = format(date, 'yyyy-MM-dd');
-    return appointments.filter(apt => apt.date === dateStr);
+    return filteredAppointments.filter(apt => apt.date === dateStr);
   };
 
   const handleDateClick = (date) => {
@@ -133,7 +206,138 @@ switch (status) {
           <ApperIcon name="Plus" size={16} className="mr-2" />
           Schedule New
         </Button>
-      </div>
+</div>
+
+      {/* Search and Filters */}
+      <Card>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">Search & Filters</h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearFilters}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              <ApperIcon name="X" size={16} className="mr-1" />
+              Clear Filters
+            </Button>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+            {/* Search */}
+            <div className="md:col-span-2">
+              <SearchBar
+                placeholder="Search by patient or doctor name..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
+            {/* Department Filter */}
+            <div>
+              <select
+                value={selectedDepartment}
+                onChange={(e) => setSelectedDepartment(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+              >
+                <option value="">All Departments</option>
+                {departments.map(dept => (
+                  <option key={dept.Id} value={dept.Id}>{dept.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Doctor Filter */}
+            <div>
+              <select
+                value={selectedDoctor}
+                onChange={(e) => setSelectedDoctor(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+              >
+                <option value="">All Doctors</option>
+                {getFilteredDoctors().map(doctor => (
+                  <option key={doctor.Id} value={doctor.Id}>{doctor.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Status Filter */}
+            <div>
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+              >
+                <option value="">All Statuses</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="checked-in">Checked In</option>
+                <option value="in-progress">In Progress</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+
+            {/* Date Range */}
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                type="date"
+                placeholder="Start Date"
+                value={dateRangeStart}
+                onChange={(e) => setDateRangeStart(e.target.value)}
+                className="text-sm"
+              />
+              <Input
+                type="date"
+                placeholder="End Date"
+                value={dateRangeEnd}
+                onChange={(e) => setDateRangeEnd(e.target.value)}
+                className="text-sm"
+              />
+            </div>
+          </div>
+
+          {/* Active Filters Display */}
+          {(searchTerm || selectedDepartment || selectedDoctor || selectedStatus || dateRangeStart || dateRangeEnd) && (
+            <div className="flex flex-wrap gap-2 pt-2 border-t">
+              <span className="text-sm text-gray-600 font-medium">Active filters:</span>
+              {searchTerm && (
+                <Badge variant="info" className="text-xs">
+                  Search: "{searchTerm}"
+                </Badge>
+              )}
+              {selectedDepartment && (
+                <Badge variant="info" className="text-xs">
+                  Department: {departments.find(d => d.Id === parseInt(selectedDepartment))?.name}
+                </Badge>
+              )}
+              {selectedDoctor && (
+                <Badge variant="info" className="text-xs">
+                  Doctor: {doctors.find(d => d.Id === parseInt(selectedDoctor))?.name}
+                </Badge>
+              )}
+              {selectedStatus && (
+                <Badge variant="info" className="text-xs">
+                  Status: {selectedStatus}
+                </Badge>
+              )}
+              {dateRangeStart && (
+                <Badge variant="info" className="text-xs">
+                  From: {format(new Date(dateRangeStart), 'MMM d, yyyy')}
+                </Badge>
+              )}
+              {dateRangeEnd && (
+                <Badge variant="info" className="text-xs">
+                  To: {format(new Date(dateRangeEnd), 'MMM d, yyyy')}
+                </Badge>
+              )}
+              <span className="text-xs text-gray-500">
+                ({filteredAppointments.length} of {appointments.length} appointments)
+              </span>
+            </div>
+          )}
+        </div>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Panel - Calendar */}
