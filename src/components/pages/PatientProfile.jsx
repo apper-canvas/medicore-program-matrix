@@ -41,8 +41,15 @@ const [error, setError] = useState("")
   const [searchDiagnosis, setSearchDiagnosis] = useState("")
   const [diagnosisOptions, setDiagnosisOptions] = useState([])
   const [medications, setMedications] = useState([])
-  const [allergies, setAllergies] = useState([])
+const [allergies, setAllergies] = useState([])
   const [drugInteractions, setDrugInteractions] = useState([])
+  const [documents, setDocuments] = useState([])
+  const [showDocumentUpload, setShowDocumentUpload] = useState(false)
+  const [showDocumentPreview, setShowDocumentPreview] = useState(false)
+  const [selectedDocument, setSelectedDocument] = useState(null)
+  const [documentFilter, setDocumentFilter] = useState('all')
+  const [documentSearch, setDocumentSearch] = useState('')
+  const [isDragOver, setIsDragOver] = useState(false)
   // Form state
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -73,6 +80,7 @@ const tabs = [
     { id: "vitals", label: "Vitals", icon: "Activity" },
     { id: "medications", label: "Current Medications", icon: "Pill" },
     { id: "allergies", label: "Allergies & Alerts", icon: "AlertTriangle" },
+    { id: "documents", label: "Documents", icon: "FolderOpen" },
     { id: "demographics", label: "Demographics", icon: "User" },
     { id: "insurance", label: "Insurance", icon: "Shield" },
     { id: "emergency", label: "Emergency Contact", icon: "Phone" }
@@ -108,6 +116,47 @@ const loadPatientData = async () => {
       setVitals(vitalsData)
       setMedications(medicationsData)
       setAllergies(allergiesData)
+      
+      // Load mock documents data
+      const mockDocuments = [
+        {
+          Id: 1,
+          patientId: parseInt(patientId),
+          fileName: "chest_xray_2024.jpg",
+          fileType: "image/jpeg",
+          fileSize: 2456789,
+          documentType: "Radiology",
+          uploadDate: "2024-01-15T10:30:00Z",
+          description: "Chest X-ray - Annual checkup",
+          uploadedBy: "Dr. Smith",
+          url: "/api/documents/chest_xray_2024.jpg"
+        },
+        {
+          Id: 2,
+          patientId: parseInt(patientId),
+          fileName: "blood_test_results.pdf",
+          fileType: "application/pdf",
+          fileSize: 892345,
+          documentType: "Lab Results",
+          uploadDate: "2024-01-10T14:20:00Z",
+          description: "Complete Blood Count (CBC)",
+          uploadedBy: "Lab Technician",
+          url: "/api/documents/blood_test_results.pdf"
+        },
+        {
+          Id: 3,
+          patientId: parseInt(patientId),
+          fileName: "mri_brain_scan.jpg",
+          fileType: "image/jpeg",
+          fileSize: 3789456,
+          documentType: "Radiology",
+          uploadDate: "2024-01-05T09:15:00Z",
+          description: "Brain MRI - Follow-up scan",
+          uploadedBy: "Dr. Johnson",
+          url: "/api/documents/mri_brain_scan.jpg"
+        }
+      ]
+      setDocuments(mockDocuments)
     } catch (err) {
       setError(err.message)
       toast.error("Failed to load patient data")
@@ -485,7 +534,7 @@ const getVitalStatus = (value, field) => {
       case "mild": return "info"
       default: return "secondary"
     }
-  }
+}
 
   const getMedicationStatusVariant = (endDate) => {
     if (!endDate) return "active"
@@ -494,6 +543,139 @@ const getVitalStatus = (value, field) => {
     return end > now ? "active" : "inactive"
   }
 
+  // Document Management Functions
+  const handleFileUpload = (event) => {
+    const files = Array.from(event.target.files || event.dataTransfer.files)
+    files.forEach(file => {
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        toast.error(`File ${file.name} is too large. Maximum size is 10MB.`)
+        return
+      }
+      
+      const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+      if (!allowedTypes.includes(file.type)) {
+        toast.error(`File type ${file.type} is not supported.`)
+        return
+      }
+      
+      // Create new document object
+      const newDocument = {
+        Id: Date.now() + Math.random(),
+        patientId: parseInt(patientId),
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        documentType: getDocumentTypeFromFile(file),
+        uploadDate: new Date().toISOString(),
+        description: "",
+        uploadedBy: "Current User",
+        url: URL.createObjectURL(file),
+        file: file
+      }
+      
+      setDocuments(prev => [newDocument, ...prev])
+      toast.success(`Document ${file.name} uploaded successfully`)
+    })
+    
+    setShowDocumentUpload(false)
+    // Reset file input
+    event.target.value = ''
+  }
+
+  const getDocumentTypeFromFile = (file) => {
+    const fileName = file.name.toLowerCase()
+    if (fileName.includes('xray') || fileName.includes('mri') || fileName.includes('ct') || fileName.includes('ultrasound')) {
+      return 'Radiology'
+    } else if (fileName.includes('lab') || fileName.includes('blood') || fileName.includes('urine') || fileName.includes('test')) {
+      return 'Lab Results'
+    } else if (fileName.includes('prescription') || fileName.includes('medication')) {
+      return 'Prescriptions'
+    } else if (file.type.startsWith('image/')) {
+      return 'Images'
+    } else {
+      return 'Medical Records'
+    }
+  }
+
+  const handleDocumentPreview = (document) => {
+    setSelectedDocument(document)
+    setShowDocumentPreview(true)
+  }
+
+  const handleDocumentDownload = (document) => {
+    const link = document.createElement('a')
+    link.href = document.url
+    link.download = document.fileName
+    link.click()
+    toast.success(`Downloaded ${document.fileName}`)
+  }
+
+  const handleDocumentDelete = (documentId) => {
+    if (!window.confirm("Are you sure you want to delete this document?")) return
+    
+    setDocuments(prev => prev.filter(doc => doc.Id !== documentId))
+    toast.success("Document deleted successfully")
+  }
+
+  const handleDocumentEdit = (document, newDescription, newType) => {
+    setDocuments(prev => prev.map(doc => 
+      doc.Id === document.Id 
+        ? { ...doc, description: newDescription, documentType: newType }
+        : doc
+    ))
+    toast.success("Document updated successfully")
+  }
+
+  const handleDragOver = (e) => {
+    e.preventDefault()
+    setIsDragOver(true)
+  }
+
+  const handleDragLeave = (e) => {
+    e.preventDefault()
+    setIsDragOver(false)
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    setIsDragOver(false)
+    handleFileUpload(e)
+  }
+
+  const getFileIcon = (fileType) => {
+    if (fileType.startsWith('image/')) return 'Image'
+    if (fileType === 'application/pdf') return 'FileText'
+    if (fileType.includes('word')) return 'FileText'
+    return 'File'
+  }
+
+  const getFileTypeVariant = (documentType) => {
+    switch (documentType) {
+      case 'Radiology': return 'radiology'
+      case 'Lab Results': return 'lab'
+      case 'Prescriptions': return 'prescription'
+      case 'Images': return 'image'
+      case 'Medical Records': return 'medical'
+      default: return 'default'
+    }
+  }
+
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 Bytes'
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
+
+  const filteredDocuments = documents.filter(doc => {
+    const matchesFilter = documentFilter === 'all' || doc.documentType === documentFilter
+    const matchesSearch = doc.fileName.toLowerCase().includes(documentSearch.toLowerCase()) ||
+                         doc.description.toLowerCase().includes(documentSearch.toLowerCase())
+    return matchesFilter && matchesSearch
+  })
+
+  const documentTypes = ['all', 'Medical Records', 'Lab Results', 'Radiology', 'Prescriptions', 'Images']
   if (loading) return <Loading />
   if (error) return <Error message={error} onRetry={loadPatientData} />
   if (!patient) return <Error message="Patient not found" />
@@ -1200,7 +1382,240 @@ const getVitalStatus = (value, field) => {
               </div>
             )}
           </div>
-        )}
+)}
+
+      {/* Documents Tab */}
+      {activeTab === "documents" && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <h3 className="text-lg font-semibold text-gray-900">Patient Documents</h3>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Search documents..."
+                  value={documentSearch}
+                  onChange={(e) => setDocumentSearch(e.target.value)}
+                  className="w-full sm:w-64"
+                />
+                <select
+                  value={documentFilter}
+                  onChange={(e) => setDocumentFilter(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  {documentTypes.map(type => (
+                    <option key={type} value={type}>
+                      {type === 'all' ? 'All Types' : type}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button onClick={() => setShowDocumentUpload(true)} className="flex items-center gap-2">
+                <ApperIcon name="Upload" size={16} />
+                Upload Document
+              </Button>
+            </div>
+          </div>
+
+          {/* Upload Area */}
+          {showDocumentUpload && (
+            <Card className="p-8">
+              <div
+                className={cn(
+                  "border-2 border-dashed rounded-lg p-8 text-center transition-colors",
+                  isDragOver ? "border-primary-500 bg-primary-50" : "border-gray-300"
+                )}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                <ApperIcon name="Upload" size={48} className="mx-auto text-gray-400 mb-4" />
+                <p className="text-lg font-medium text-gray-900 mb-2">
+                  Drag and drop files here, or click to select
+                </p>
+                <p className="text-sm text-gray-500 mb-4">
+                  Supports: JPG, PNG, PDF, DOC, DOCX (Max 10MB per file)
+                </p>
+                <div className="flex justify-center gap-3">
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*,.pdf,.doc,.docx"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="document-upload"
+                  />
+                  <label htmlFor="document-upload">
+                    <Button as="span" className="cursor-pointer">
+                      Select Files
+                    </Button>
+                  </label>
+                  <Button variant="ghost" onClick={() => setShowDocumentUpload(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Documents Grid */}
+          {filteredDocuments.length === 0 ? (
+            <Card className="text-center py-12">
+              <ApperIcon name="FolderOpen" size={48} className="mx-auto text-gray-400 mb-4" />
+              <p className="text-gray-500 mb-4">
+                {documents.length === 0 ? "No documents uploaded" : "No documents match your search"}
+              </p>
+              {documents.length === 0 && (
+                <Button onClick={() => setShowDocumentUpload(true)}>
+                  Upload First Document
+                </Button>
+              )}
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredDocuments.map((document) => (
+                <Card key={document.Id} className="p-4 hover:shadow-card-hover transition-shadow">
+                  <div className="space-y-3">
+                    {/* Document Preview */}
+                    <div 
+                      className="aspect-square rounded-lg bg-gray-100 flex items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors"
+                      onClick={() => handleDocumentPreview(document)}
+                    >
+                      {document.fileType.startsWith('image/') ? (
+                        <img
+                          src={document.url}
+                          alt={document.fileName}
+                          className="w-full h-full object-cover rounded-lg"
+                        />
+                      ) : (
+                        <ApperIcon name={getFileIcon(document.fileType)} size={48} className="text-gray-400" />
+                      )}
+                    </div>
+
+                    {/* Document Info */}
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between">
+                        <h4 className="font-medium text-gray-900 text-sm truncate pr-2">
+                          {document.fileName}
+                        </h4>
+                        <Badge variant={getFileTypeVariant(document.documentType)} className="text-xs">
+                          {document.documentType}
+                        </Badge>
+                      </div>
+                      
+                      {document.description && (
+                        <p className="text-xs text-gray-600 line-clamp-2">
+                          {document.description}
+                        </p>
+                      )}
+                      
+                      <div className="text-xs text-gray-500 space-y-1">
+                        <p>Size: {formatFileSize(document.fileSize)}</p>
+                        <p>Uploaded: {format(new Date(document.uploadDate), 'MMM dd, yyyy')}</p>
+                        <p>By: {document.uploadedBy}</p>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDocumentPreview(document)}
+                          title="Preview"
+                        >
+                          <ApperIcon name="Eye" size={14} />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDocumentDownload(document)}
+                          title="Download"
+                        >
+                          <ApperIcon name="Download" size={14} />
+                        </Button>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDocumentDelete(document.Id)}
+                        className="text-red-600 hover:text-red-700"
+                        title="Delete"
+                      >
+                        <ApperIcon name="Trash2" size={14} />
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Document Preview Modal */}
+          {showDocumentPreview && selectedDocument && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-center p-4 border-b border-gray-200">
+                  <div>
+                    <h3 className="text-lg font-semibold">{selectedDocument.fileName}</h3>
+                    <p className="text-sm text-gray-500">
+                      {selectedDocument.documentType} • {formatFileSize(selectedDocument.fileSize)}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      onClick={() => handleDocumentDownload(selectedDocument)}
+                    >
+                      <ApperIcon name="Download" size={16} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setShowDocumentPreview(false)}
+                    >
+                      <ApperIcon name="X" size={20} />
+                    </Button>
+                  </div>
+                </div>
+                
+                <div className="p-4">
+                  {selectedDocument.fileType.startsWith('image/') ? (
+                    <img
+                      src={selectedDocument.url}
+                      alt={selectedDocument.fileName}
+                      className="w-full max-h-[70vh] object-contain rounded-lg"
+                    />
+                  ) : selectedDocument.fileType === 'application/pdf' ? (
+                    <div className="text-center py-12">
+                      <ApperIcon name="FileText" size={64} className="mx-auto text-gray-400 mb-4" />
+                      <p className="text-gray-600 mb-4">PDF Preview not available in demo</p>
+                      <Button onClick={() => handleDocumentDownload(selectedDocument)}>
+                        Download to View
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <ApperIcon name="File" size={64} className="mx-auto text-gray-400 mb-4" />
+                      <p className="text-gray-600 mb-4">Preview not available for this file type</p>
+                      <Button onClick={() => handleDocumentDownload(selectedDocument)}>
+                        Download File
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {selectedDocument.description && (
+                    <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                      <h4 className="font-medium text-gray-900 mb-2">Description</h4>
+                      <p className="text-gray-600">{selectedDocument.description}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {activeTab === "demographics" && (
         <Card className="p-6">
           <h2 className="text-xl font-semibold text-gray-900 mb-6">Demographics</h2>

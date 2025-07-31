@@ -13,7 +13,12 @@ const Badge = ({ className, variant = "default", children, ...props }) => {
     inactive: "bg-gray-100 text-gray-600",
     critical: "bg-red-100 text-red-800",
     discharged: "bg-blue-100 text-blue-800",
-    secondary: "bg-gray-100 text-gray-700"
+    secondary: "bg-gray-100 text-gray-700",
+    radiology: "bg-purple-100 text-purple-800",
+    lab: "bg-cyan-100 text-cyan-800",
+    prescription: "bg-orange-100 text-orange-800",
+    image: "bg-pink-100 text-pink-800",
+    medical: "bg-indigo-100 text-indigo-800"
   }
   
   return (
