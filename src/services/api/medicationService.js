@@ -160,6 +160,59 @@ class MedicationService {
     )
     return activeMedications.length
   }
+async searchDrugs(query) {
+    await new Promise(resolve => setTimeout(resolve, 200))
+    
+    // Mock drug database for search
+    const drugDatabase = [
+      { name: "Lisinopril", genericName: "Lisinopril", commonDosage: "10mg", category: "ACE Inhibitor" },
+      { name: "Metformin", genericName: "Metformin", commonDosage: "500mg", category: "Antidiabetic" },
+      { name: "Aspirin", genericName: "Acetylsalicylic Acid", commonDosage: "81mg", category: "NSAID" },
+      { name: "Atorvastatin", genericName: "Atorvastatin", commonDosage: "20mg", category: "Statin" },
+      { name: "Amlodipine", genericName: "Amlodipine", commonDosage: "5mg", category: "Calcium Channel Blocker" },
+      { name: "Omeprazole", genericName: "Omeprazole", commonDosage: "20mg", category: "PPI" },
+      { name: "Levothyroxine", genericName: "Levothyroxine", commonDosage: "50mcg", category: "Thyroid Hormone" },
+      { name: "Albuterol", genericName: "Albuterol", commonDosage: "90mcg", category: "Bronchodilator" },
+      { name: "Warfarin", genericName: "Warfarin", commonDosage: "5mg", category: "Anticoagulant" },
+      { name: "Prednisone", genericName: "Prednisone", commonDosage: "10mg", category: "Corticosteroid" },
+      { name: "Amoxicillin", genericName: "Amoxicillin", commonDosage: "500mg", category: "Antibiotic" },
+      { name: "Ibuprofen", genericName: "Ibuprofen", commonDosage: "400mg", category: "NSAID" },
+      { name: "Acetaminophen", genericName: "Acetaminophen", commonDosage: "500mg", category: "Analgesic" },
+      { name: "Hydrochlorothiazide", genericName: "Hydrochlorothiazide", commonDosage: "25mg", category: "Diuretic" },
+      { name: "Furosemide", genericName: "Furosemide", commonDosage: "40mg", category: "Loop Diuretic" }
+    ]
+
+    return drugDatabase.filter(drug => 
+      drug.name.toLowerCase().includes(query.toLowerCase()) ||
+      drug.genericName.toLowerCase().includes(query.toLowerCase()) ||
+      drug.category.toLowerCase().includes(query.toLowerCase())
+    )
+  }
+
+  async calculateDosage(drugName, patientWeight, patientAge) {
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
+    // Simplified dosage calculation logic
+    const calculations = {
+      "ibuprofen": {
+        adult: "400-600mg every 6-8 hours",
+        pediatric: "10mg/kg every 6-8 hours"
+      },
+      "acetaminophen": {
+        adult: "500-1000mg every 4-6 hours",
+        pediatric: "10-15mg/kg every 4-6 hours"
+      },
+      "amoxicillin": {
+        adult: "500mg every 8 hours",
+        pediatric: "25-45mg/kg/day divided every 8 hours"
+      }
+    }
+
+    const drugKey = drugName.toLowerCase()
+    const ageGroup = patientAge < 18 ? 'pediatric' : 'adult'
+    
+    return calculations[drugKey]?.[ageGroup] || "Consult prescribing information"
+  }
 }
 
 export default new MedicationService()

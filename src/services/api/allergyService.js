@@ -127,6 +127,60 @@ class AllergyService {
     await new Promise(resolve => setTimeout(resolve, 100))
     return this.allergies.filter(allergy => allergy.patientId === parseInt(patientId)).length
   }
+async checkDrugAllergy(patientId, drugName) {
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
+    const patientAllergies = this.allergies.filter(allergy => allergy.patientId === parseInt(patientId))
+    
+    // Check for direct drug name matches and common drug class allergies
+    const drugClassMap = {
+      "penicillin": ["amoxicillin", "ampicillin", "penicillin"],
+      "sulfa": ["sulfamethoxazole", "trimethoprim", "sulfonamide"],
+      "nsaid": ["ibuprofen", "aspirin", "naproxen", "diclofenac"],
+      "ace inhibitor": ["lisinopril", "enalapril", "captopril"]
+    }
+
+    const alerts = []
+    
+    for (const allergy of patientAllergies) {
+      const allergen = allergy.allergen.toLowerCase()
+      const drug = drugName.toLowerCase()
+      
+      // Direct match
+      if (allergen.includes(drug) || drug.includes(allergen)) {
+        alerts.push(allergy)
+        continue
+      }
+      
+      // Drug class match
+      for (const [drugClass, drugs] of Object.entries(drugClassMap)) {
+        if (allergen.includes(drugClass) && drugs.some(d => drug.includes(d))) {
+          alerts.push({...allergy, crossReactivity: true})
+        }
+      }
+    }
+    
+    return alerts
+  }
+
+  async getMostCriticalAllergies(patientId) {
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
+    const allergies = await this.getByPatientId(patientId)
+    
+    return allergies
+      .filter(allergy => allergy.severity.toLowerCase() === 'severe')
+      .sort((a, b) => {
+        const priorityOrder = ['anaphylaxis', 'respiratory', 'cardiac', 'neurological']
+        const aPriority = priorityOrder.findIndex(p => a.reaction.toLowerCase().includes(p))
+        const bPriority = priorityOrder.findIndex(p => b.reaction.toLowerCase().includes(p))
+        
+        if (aPriority === -1 && bPriority === -1) return 0
+        if (aPriority === -1) return 1
+        if (bPriority === -1) return -1
+        return aPriority - bPriority
+      })
+  }
 }
 
 export default new AllergyService()
