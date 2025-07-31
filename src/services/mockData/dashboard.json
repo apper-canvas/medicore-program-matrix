@@ -1,74 +1,223 @@
-[
-  {
-    "Id": 1,
-    "label": "Total Patients",
-    "value": 1247,
-    "unit": "",
-    "trend": "up",
-    "icon": "Users",
-    "color": "primary"
+{
+  "metrics": [
+    {
+      "Id": 1,
+      "label": "Bed Occupancy Rate",
+      "value": 87,
+      "unit": "%",
+      "trend": "up",
+      "icon": "Bed",
+      "color": "success"
+    },
+    {
+      "Id": 2,
+      "label": "Patient Satisfaction",
+      "value": 4.8,
+      "unit": "/5",
+      "trend": "up",
+      "icon": "Heart",
+      "color": "primary"
+    },
+    {
+      "Id": 3,
+      "label": "Monthly Revenue",
+      "value": 2450000,
+      "unit": "$",
+      "trend": "up",
+      "icon": "DollarSign",
+      "color": "success"
+    },
+    {
+      "Id": 4,
+      "label": "Operating Margin",
+      "value": 12.3,
+      "unit": "%",
+      "trend": "stable",
+      "icon": "TrendingUp",
+      "color": "info"
+    },
+    {
+      "Id": 5,
+      "label": "Readmission Rate",
+      "value": 8.2,
+      "unit": "%",
+      "trend": "down",
+      "icon": "RotateCcw",
+      "color": "warning"
+    },
+    {
+      "Id": 6,
+      "label": "Staff Utilization",
+      "value": 78,
+      "unit": "%",
+      "trend": "stable",
+      "icon": "Users",
+      "color": "info"
+    },
+    {
+      "Id": 7,
+      "label": "Quality Rating",
+      "value": 5,
+      "unit": "★",
+      "trend": "stable",
+      "icon": "Award",
+      "color": "success"
+    },
+    {
+      "Id": 8,
+      "label": "Cost per Patient",
+      "value": 1965,
+      "unit": "$",
+      "trend": "down",
+      "icon": "Calculator",
+      "color": "primary"
+    }
+  ],
+  "departmentAnalytics": [
+    {
+      "Id": 1,
+      "department": "Emergency",
+      "avgLengthOfStay": 1.2,
+      "benchmark": 1.5,
+      "variance": -0.3,
+      "patientCount": 89
+    },
+    {
+      "Id": 2,
+      "department": "Cardiology",
+      "avgLengthOfStay": 3.8,
+      "benchmark": 4.2,
+      "variance": -0.4,
+      "patientCount": 67
+    },
+    {
+      "Id": 3,
+      "department": "Orthopedics",
+      "avgLengthOfStay": 4.5,
+      "benchmark": 4.1,
+      "variance": 0.4,
+      "patientCount": 45
+    },
+    {
+      "Id": 4,
+      "department": "General Surgery",
+      "avgLengthOfStay": 5.2,
+      "benchmark": 5.8,
+      "variance": -0.6,
+      "patientCount": 78
+    },
+    {
+      "Id": 5,
+      "department": "Pediatrics",
+      "avgLengthOfStay": 2.1,
+      "benchmark": 2.3,
+      "variance": -0.2,
+      "patientCount": 92
+    },
+    {
+      "Id": 6,
+      "department": "ICU",
+      "avgLengthOfStay": 8.7,
+      "benchmark": 9.2,
+      "variance": -0.5,
+      "patientCount": 34
+    }
+  ],
+  "readmissionData": [
+    {
+      "Id": 1,
+      "month": "Jan",
+      "rate": 9.5,
+      "preventableCount": 12,
+      "totalReadmissions": 28
+    },
+    {
+      "Id": 2,
+      "month": "Feb",
+      "rate": 8.9,
+      "preventableCount": 11,
+      "totalReadmissions": 24
+    },
+    {
+      "Id": 3,
+      "month": "Mar",
+      "rate": 8.1,
+      "preventableCount": 9,
+      "totalReadmissions": 22
+    },
+    {
+      "Id": 4,
+      "month": "Apr",
+      "rate": 7.8,
+      "preventableCount": 8,
+      "totalReadmissions": 21
+    },
+    {
+      "Id": 5,
+      "month": "May",
+      "rate": 8.4,
+      "preventableCount": 10,
+      "totalReadmissions": 25
+    },
+    {
+      "Id": 6,
+      "month": "Jun",
+      "rate": 8.2,
+      "preventableCount": 9,
+      "totalReadmissions": 23
+    }
+  ],
+  "staffProductivity": [
+    {
+      "Id": 1,
+      "category": "Nursing",
+      "value": 35,
+      "utilizationRate": 82,
+      "satisfactionScore": 4.6
+    },
+    {
+      "Id": 2,
+      "category": "Physicians",
+      "value": 25,
+      "utilizationRate": 89,
+      "satisfactionScore": 4.4
+    },
+    {
+      "Id": 3,
+      "category": "Support Staff",
+      "value": 20,
+      "utilizationRate": 75,
+      "satisfactionScore": 4.2
+    },
+    {
+      "Id": 4,
+      "category": "Administration",
+      "value": 12,
+      "utilizationRate": 68,
+      "satisfactionScore": 4.3
+    },
+    {
+      "Id": 5,
+      "category": "Specialists",
+      "value": 8,
+      "utilizationRate": 91,
+      "satisfactionScore": 4.7
+    }
+  ],
+  "qualityMetrics": {
+    "patientSafetyScore": "A+",
+    "hcahpsScore": 4.8,
+    "cmsStarRating": 5,
+    "infectionRate": 1.2,
+    "mortalityIndex": 0.89,
+    "complicationRate": 2.1
   },
-  {
-    "Id": 2,
-    "label": "Bed Occupancy",
-    "value": 85,
-    "unit": "%",
-    "trend": "stable",
-    "icon": "Bed",
-    "color": "success"
-  },
-  {
-    "Id": 3,
-    "label": "Today's Appointments",
-    "value": 42,
-    "unit": "",
-    "trend": "up",
-    "icon": "Calendar",
-    "color": "info"
-  },
-  {
-    "Id": 4,
-    "label": "Emergency Cases",
-    "value": 8,
-    "unit": "",
-    "trend": "down",
-    "icon": "AlertTriangle",
-    "color": "warning"
-  },
-  {
-    "Id": 5,
-    "label": "Pending Lab Results",
-    "value": 23,
-    "unit": "",
-    "trend": "stable",
-    "icon": "TestTube",
-    "color": "primary"
-  },
-  {
-    "Id": 6,
-    "label": "Active Surgeries",
-    "value": 3,
-    "unit": "",
-    "trend": "stable",
-    "icon": "Scissors",
-    "color": "error"
-  },
-  {
-    "Id": 7,
-    "label": "Monthly Revenue",
-    "value": 245000,
-    "unit": "$",
-    "trend": "up",
-    "icon": "DollarSign",
-    "color": "success"
-  },
-  {
-    "Id": 8,
-    "label": "Staff On Duty",
-    "value": 156,
-    "unit": "",
-    "trend": "stable",
-    "icon": "UserCheck",
-    "color": "info"
+  "financialMetrics": {
+    "monthlyRevenue": 2450000,
+    "operatingMargin": 12.3,
+    "costPerPatient": 1965,
+    "collectionRate": 94.2,
+    "daysInAR": 45,
+    "caseMix": 1.34
   }
-]
+}
