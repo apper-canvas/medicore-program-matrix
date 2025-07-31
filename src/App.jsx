@@ -14,11 +14,12 @@ import Radiology from "@/components/pages/Radiology"
 import Billing from "@/components/pages/Billing"
 import Reports from "@/components/pages/Reports"
 import Administration from "@/components/pages/Administration"
+import BedManagement from "@/components/pages/BedManagement"
 function App() {
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-gray-50">
-        <Routes>
+<Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={<Dashboard />} />
             <Route path="patients" element={<Patients />} />
@@ -29,6 +30,7 @@ function App() {
             <Route path="laboratory" element={<Laboratory />} />
             <Route path="pharmacy" element={<Pharmacy />} />
             <Route path="radiology" element={<Radiology />} />
+            <Route path="bed-management" element={<BedManagement />} />
             <Route path="billing" element={<Billing />} />
             <Route path="reports" element={<Reports />} />
             <Route path="administration" element={<Administration />} />

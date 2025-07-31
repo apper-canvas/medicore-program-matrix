@@ -13,6 +13,7 @@ const navigation = [
     { name: "Laboratory", href: "/laboratory", icon: "TestTube", badge: "5" },
     { name: "Pharmacy", href: "/pharmacy", icon: "Pill" },
     { name: "Radiology", href: "/radiology", icon: "ScanLine" },
+    { name: "Bed Management", href: "/bed-management", icon: "Hospital" },
     { name: "Billing", href: "/billing", icon: "CreditCard" },
     { name: "Reports", href: "/reports", icon: "FileText" },
     { name: "Administration", href: "/administration", icon: "Settings" },

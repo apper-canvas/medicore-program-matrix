@@ -2,8 +2,8 @@ import React, { useState, useEffect } from "react"
 import MetricCard from "@/components/molecules/MetricCard"
 import Loading from "@/components/ui/Loading"
 import Error from "@/components/ui/Error"
+import BedManagementWidget from "@/components/molecules/BedManagementWidget"
 import dashboardService from "@/services/api/dashboardService"
-
 const Dashboard = () => {
   const [metrics, setMetrics] = useState([])
   const [loading, setLoading] = useState(true)
@@ -111,40 +111,8 @@ const Dashboard = () => {
             </div>
           </div>
         </div>
-        
-        {/* Quick Actions */}
-        <div className="bg-white rounded-lg shadow-card p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <button className="p-4 bg-primary-50 hover:bg-primary-100 rounded-lg transition-colors duration-200 text-center">
-              <div className="h-8 w-8 bg-primary-500 rounded-lg mx-auto mb-2 flex items-center justify-center">
-                <span className="text-white text-sm">👤</span>
-              </div>
-              <p className="text-sm font-medium text-primary-700">Add Patient</p>
-            </button>
-            
-            <button className="p-4 bg-green-50 hover:bg-green-100 rounded-lg transition-colors duration-200 text-center">
-              <div className="h-8 w-8 bg-green-500 rounded-lg mx-auto mb-2 flex items-center justify-center">
-                <span className="text-white text-sm">📅</span>
-              </div>
-              <p className="text-sm font-medium text-green-700">Schedule</p>
-            </button>
-            
-            <button className="p-4 bg-accent-50 hover:bg-accent-100 rounded-lg transition-colors duration-200 text-center">
-              <div className="h-8 w-8 bg-accent-500 rounded-lg mx-auto mb-2 flex items-center justify-center">
-                <span className="text-white text-sm">🧪</span>
-              </div>
-              <p className="text-sm font-medium text-accent-700">Lab Order</p>
-            </button>
-            
-            <button className="p-4 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors duration-200 text-center">
-              <div className="h-8 w-8 bg-purple-500 rounded-lg mx-auto mb-2 flex items-center justify-center">
-                <span className="text-white text-sm">💊</span>
-              </div>
-              <p className="text-sm font-medium text-purple-700">Prescribe</p>
-            </button>
-          </div>
-        </div>
+{/* Bed Management Widget */}
+        <BedManagementWidget />
       </div>
     </div>
   )
