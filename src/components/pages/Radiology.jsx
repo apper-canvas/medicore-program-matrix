@@ -302,43 +302,57 @@ const loadDicomImage = useCallback((imageData, isPrior = false) => {
       
       ctx.restore();
       
-      // Draw measurements (only on current study)
+      // Draw annotations (only on current study)
       if (!isPrior) {
-        drawMeasurements(ctx);
+        drawAnnotations(ctx);
+      }
+      
+      // Draw current annotation being drawn
+      if (currentMeasurement && !isPrior) {
+        drawCurrentAnnotation(ctx);
       }
     };
     
     img.src = imageData.url;
-  }, [zoomLevel, panOffset, windowLevel, measurements, priorZoomLevel, priorPanOffset, priorWindowLevel]);
+  }, [zoomLevel, panOffset, windowLevel, measurements, priorZoomLevel, priorPanOffset, priorWindowLevel, currentMeasurement]);
 
-  const drawMeasurements = useCallback((ctx) => {
+const drawAnnotations = useCallback((ctx) => {
     ctx.save();
-    ctx.strokeStyle = '#00ff00';
-    ctx.lineWidth = 2;
-    ctx.font = '14px Arial';
-    ctx.fillStyle = '#00ff00';
-
-    measurements.forEach((measurement) => {
-      if (measurement.type === 'distance') {
+    
+    measurements.forEach((annotation, index) => {
+      const isSelected = selectedAnnotation === index;
+      ctx.strokeStyle = isSelected ? '#ffff00' : '#00ff00';
+      ctx.fillStyle = isSelected ? '#ffff00' : '#00ff00';
+      ctx.lineWidth = isSelected ? 3 : 2;
+      ctx.font = '14px Arial';
+      
+      if (annotation.type === 'distance') {
+        // Draw distance line
         ctx.beginPath();
-        ctx.moveTo(measurement.start.x, measurement.start.y);
-        ctx.lineTo(measurement.end.x, measurement.end.y);
+        ctx.moveTo(annotation.start.x, annotation.start.y);
+        ctx.lineTo(annotation.end.x, annotation.end.y);
         ctx.stroke();
         
         // Draw measurement text
         const distance = Math.sqrt(
-          Math.pow(measurement.end.x - measurement.start.x, 2) + 
-          Math.pow(measurement.end.y - measurement.start.y, 2)
+          Math.pow(annotation.end.x - annotation.start.x, 2) + 
+          Math.pow(annotation.end.y - annotation.start.y, 2)
         ) * 0.1; // Convert pixels to mm (approximate)
         
         ctx.fillText(
           `${distance.toFixed(1)} mm`,
-          (measurement.start.x + measurement.end.x) / 2,
-          (measurement.start.y + measurement.end.y) / 2 - 10
+          (annotation.start.x + annotation.end.x) / 2,
+          (annotation.start.y + annotation.end.y) / 2 - 10
         );
-      } else if (measurement.type === 'angle') {
-        // Draw angle measurement
-        const { center, point1, point2 } = measurement;
+        
+        // Draw endpoint handles if selected
+        if (isSelected) {
+          ctx.fillRect(annotation.start.x - 3, annotation.start.y - 3, 6, 6);
+          ctx.fillRect(annotation.end.x - 3, annotation.end.y - 3, 6, 6);
+        }
+      } else if (annotation.type === 'angle') {
+        // Draw angle lines
+        const { center, point1, point2 } = annotation;
         ctx.beginPath();
         ctx.moveTo(center.x, center.y);
         ctx.lineTo(point1.x, point1.y);
@@ -346,17 +360,121 @@ const loadDicomImage = useCallback((imageData, isPrior = false) => {
         ctx.lineTo(point2.x, point2.y);
         ctx.stroke();
         
-        // Calculate angle
+        // Calculate and display angle
         const angle1 = Math.atan2(point1.y - center.y, point1.x - center.x);
         const angle2 = Math.atan2(point2.y - center.y, point2.x - center.x);
         const angle = Math.abs(angle1 - angle2) * (180 / Math.PI);
         
         ctx.fillText(`${angle.toFixed(1)}°`, center.x + 10, center.y - 10);
+        
+        // Draw handles if selected
+        if (isSelected) {
+          ctx.fillRect(center.x - 3, center.y - 3, 6, 6);
+          ctx.fillRect(point1.x - 3, point1.y - 3, 6, 6);
+          ctx.fillRect(point2.x - 3, point2.y - 3, 6, 6);
+        }
+      } else if (annotation.type === 'arrow') {
+        // Draw arrow line
+        const { start, end } = annotation;
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+        ctx.stroke();
+        
+        // Draw arrowhead
+        const angle = Math.atan2(end.y - start.y, end.x - start.x);
+        const arrowLength = 15;
+        const arrowAngle = Math.PI / 6;
+        
+        ctx.beginPath();
+        ctx.moveTo(end.x, end.y);
+        ctx.lineTo(
+          end.x - arrowLength * Math.cos(angle - arrowAngle),
+          end.y - arrowLength * Math.sin(angle - arrowAngle)
+        );
+        ctx.moveTo(end.x, end.y);
+        ctx.lineTo(
+          end.x - arrowLength * Math.cos(angle + arrowAngle),
+          end.y - arrowLength * Math.sin(angle + arrowAngle)
+        );
+        ctx.stroke();
+        
+        // Draw handles if selected
+        if (isSelected) {
+          ctx.fillRect(start.x - 3, start.y - 3, 6, 6);
+          ctx.fillRect(end.x - 3, end.y - 3, 6, 6);
+        }
+      } else if (annotation.type === 'text') {
+        // Draw text annotation
+        const { x, y, text } = annotation;
+        
+        // Draw background
+        ctx.fillStyle = isSelected ? 'rgba(255,255,0,0.3)' : 'rgba(0,0,0,0.5)';
+        const textMetrics = ctx.measureText(text);
+        ctx.fillRect(x - 5, y - 20, textMetrics.width + 10, 25);
+        
+        // Draw text
+        ctx.fillStyle = isSelected ? '#ffff00' : '#ffffff';
+        ctx.fillText(text, x, y);
+        
+        // Draw handle if selected
+        if (isSelected) {
+          ctx.strokeStyle = isSelected ? '#ffff00' : '#00ff00';
+          ctx.strokeRect(x - 5, y - 20, textMetrics.width + 10, 25);
+        }
       }
     });
     
     ctx.restore();
-  }, [measurements]);
+  }, [measurements, selectedAnnotation]);
+  
+  const drawCurrentAnnotation = useCallback((ctx) => {
+    if (!currentMeasurement) return;
+    
+    ctx.save();
+    ctx.strokeStyle = '#ff0000';
+    ctx.fillStyle = '#ff0000';
+    ctx.lineWidth = 2;
+    ctx.font = '14px Arial';
+    
+    if (currentMeasurement.type === 'distance') {
+      ctx.beginPath();
+      ctx.moveTo(currentMeasurement.start.x, currentMeasurement.start.y);
+      ctx.lineTo(currentMeasurement.end.x, currentMeasurement.end.y);
+      ctx.stroke();
+    } else if (currentMeasurement.type === 'arrow') {
+      const { start, end } = currentMeasurement;
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
+      ctx.stroke();
+      
+      // Draw arrowhead
+      const angle = Math.atan2(end.y - start.y, end.x - start.x);
+      const arrowLength = 15;
+      const arrowAngle = Math.PI / 6;
+      
+      ctx.beginPath();
+      ctx.moveTo(end.x, end.y);
+      ctx.lineTo(
+        end.x - arrowLength * Math.cos(angle - arrowAngle),
+        end.y - arrowLength * Math.sin(angle - arrowAngle)
+      );
+      ctx.moveTo(end.x, end.y);
+      ctx.lineTo(
+        end.x - arrowLength * Math.cos(angle + arrowAngle),
+        end.y - arrowLength * Math.sin(angle + arrowAngle)
+      );
+      ctx.stroke();
+    }
+    
+    ctx.restore();
+  }, [currentMeasurement]);
+
+// Additional state for enhanced annotations
+  const [selectedAnnotation, setSelectedAnnotation] = useState(null);
+  const [editingText, setEditingText] = useState(null);
+  const [textInput, setTextInput] = useState('');
 
 const handleCanvasMouseDown = useCallback((e, isPrior = false) => {
     const canvas = isPrior ? priorCanvasRef.current : canvasRef.current;
@@ -370,11 +488,49 @@ const handleCanvasMouseDown = useCallback((e, isPrior = false) => {
     if (activeTool === 'pan') {
       setIsDragging(true);
       setDragStart({ x: x - currentPanOffset.x, y: y - currentPanOffset.y, isPrior });
-    } else if (activeTool === 'distance' && !isPrior) {
-      setIsDrawing(true);
-      setCurrentMeasurement({ type: 'distance', start: { x, y }, end: { x, y } });
+    } else if (!isPrior) {
+      // Check if clicking on existing annotation for selection
+      const clickedAnnotationIndex = measurements.findIndex(annotation => {
+        if (annotation.type === 'distance' || annotation.type === 'arrow') {
+          const { start, end } = annotation;
+          const lineDistance = Math.abs((end.y - start.y) * x - (end.x - start.x) * y + end.x * start.y - end.y * start.x) / 
+                              Math.sqrt(Math.pow(end.y - start.y, 2) + Math.pow(end.x - start.x, 2));
+          return lineDistance < 10; // 10 pixel tolerance
+        } else if (annotation.type === 'text') {
+          const textMetrics = canvas.getContext('2d').measureText(annotation.text);
+          return x >= annotation.x - 5 && x <= annotation.x + textMetrics.width + 5 &&
+                 y >= annotation.y - 20 && y <= annotation.y + 5;
+        }
+        return false;
+      });
+      
+      if (clickedAnnotationIndex !== -1) {
+        setSelectedAnnotation(clickedAnnotationIndex);
+        if (measurements[clickedAnnotationIndex].type === 'text') {
+          setEditingText(clickedAnnotationIndex);
+          setTextInput(measurements[clickedAnnotationIndex].text);
+        }
+      } else {
+        setSelectedAnnotation(null);
+        setEditingText(null);
+        
+        if (activeTool === 'distance') {
+          setIsDrawing(true);
+          setCurrentMeasurement({ type: 'distance', start: { x, y }, end: { x, y } });
+        } else if (activeTool === 'arrow') {
+          setIsDrawing(true);
+          setCurrentMeasurement({ type: 'arrow', start: { x, y }, end: { x, y } });
+        } else if (activeTool === 'text') {
+          const text = prompt('Enter text annotation:');
+          if (text && text.trim()) {
+            const newAnnotation = { type: 'text', x, y, text: text.trim(), id: Date.now() };
+            setMeasurements(prev => [...prev, newAnnotation]);
+            toast.success('Text annotation added');
+          }
+        }
+      }
     }
-  }, [activeTool, panOffset, priorPanOffset]);
+  }, [activeTool, panOffset, priorPanOffset, measurements]);
 
 const handleCanvasMouseMove = useCallback((e, isPrior = false) => {
     const canvas = isPrior ? priorCanvasRef.current : canvasRef.current;
@@ -394,22 +550,52 @@ const handleCanvasMouseMove = useCallback((e, isPrior = false) => {
         setPanOffset(newOffset);
         if (syncViewers) setPriorPanOffset(newOffset);
       }
-    } else if (isDrawing && activeTool === 'distance' && currentMeasurement && !isPrior) {
-      setCurrentMeasurement({ ...currentMeasurement, end: { x, y } });
+    } else if (isDrawing && currentMeasurement && !isPrior) {
+      if (activeTool === 'distance' || activeTool === 'arrow') {
+        setCurrentMeasurement({ ...currentMeasurement, end: { x, y } });
+      }
     }
   }, [isDragging, isDrawing, activeTool, dragStart, currentMeasurement, syncViewers]);
 
   const handleCanvasMouseUp = useCallback(() => {
-    if (isDragging) {
+if (isDragging) {
       setIsDragging(false);
     }
     if (isDrawing && currentMeasurement) {
-      setMeasurements(prev => [...prev, currentMeasurement]);
+      const newAnnotation = { ...currentMeasurement, id: Date.now() };
+      setMeasurements(prev => [...prev, newAnnotation]);
       setCurrentMeasurement(null);
       setIsDrawing(false);
+      
+      const toolName = currentMeasurement.type === 'distance' ? 'Distance measurement' : 
+                      currentMeasurement.type === 'arrow' ? 'Arrow annotation' : 'Annotation';
+      toast.success(`${toolName} added`);
     }
   }, [isDragging, isDrawing, currentMeasurement]);
-
+  
+  // Delete selected annotation
+  const deleteSelectedAnnotation = useCallback(() => {
+    if (selectedAnnotation !== null) {
+      setMeasurements(prev => prev.filter((_, index) => index !== selectedAnnotation));
+      setSelectedAnnotation(null);
+      setEditingText(null);
+      toast.success('Annotation deleted');
+    }
+  }, [selectedAnnotation]);
+  
+  // Update text annotation
+  const updateTextAnnotation = useCallback(() => {
+    if (editingText !== null && textInput.trim()) {
+      setMeasurements(prev => prev.map((annotation, index) => 
+        index === editingText 
+          ? { ...annotation, text: textInput.trim() }
+          : annotation
+      ));
+      setEditingText(null);
+      setTextInput('');
+      toast.success('Text annotation updated');
+    }
+  }, [editingText, textInput]);
 const handleZoom = useCallback((delta, clientX, clientY, isPrior = false) => {
     const canvas = isPrior ? priorCanvasRef.current : canvasRef.current;
     if (!canvas) return;
@@ -1491,7 +1677,7 @@ return (
                       <ApperIcon name="Ruler" size={16} className="mr-1" />
                       Distance
                     </Button>
-                    <Button
+<Button
                       variant={activeTool === 'angle' ? 'primary' : 'ghost'}
                       size="sm"
                       onClick={() => setActiveTool('angle')}
@@ -1500,7 +1686,81 @@ return (
                       <ApperIcon name="Triangle" size={16} className="mr-1" />
                       Angle
                     </Button>
+                    <Button
+                      variant={activeTool === 'arrow' ? 'primary' : 'ghost'}
+                      size="sm"
+                      onClick={() => setActiveTool('arrow')}
+                      className="w-full"
+                    >
+                      <ApperIcon name="ArrowUpRight" size={16} className="mr-1" />
+                      Arrow
+                    </Button>
+                    <Button
+                      variant={activeTool === 'text' ? 'primary' : 'ghost'}
+                      size="sm"
+                      onClick={() => setActiveTool('text')}
+                      className="w-full"
+                    >
+                      <ApperIcon name="Type" size={16} className="mr-1" />
+                      Text
+                    </Button>
                   </div>
+                  
+                  {/* Annotation Management */}
+                  {selectedAnnotation !== null && (
+                    <div className="mt-4 p-3 bg-gray-700 rounded-lg">
+                      <h5 className="text-sm font-medium mb-2">Selected Annotation</h5>
+                      <div className="space-y-2">
+                        {editingText !== null && (
+                          <div className="space-y-2">
+                            <Input
+                              value={textInput}
+                              onChange={(e) => setTextInput(e.target.value)}
+                              placeholder="Edit text..."
+                              className="text-sm bg-gray-600 text-white border-gray-500"
+                              onKeyPress={(e) => {
+                                if (e.key === 'Enter') {
+                                  updateTextAnnotation();
+                                }
+                              }}
+                            />
+                            <div className="flex space-x-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={updateTextAnnotation}
+                                className="flex-1"
+                              >
+                                <ApperIcon name="Check" size={14} className="mr-1" />
+                                Save
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setEditingText(null);
+                                  setTextInput('');
+                                }}
+                                className="flex-1"
+                              >
+                                <ApperIcon name="X" size={14} className="mr-1" />
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={deleteSelectedAnnotation}
+                          className="w-full text-red-400 hover:text-red-300"
+                        >
+                          <ApperIcon name="Trash2" size={14} className="mr-1" />
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>
