@@ -21,9 +21,19 @@ const [activeTab, setActiveTab] = useState("collection")
   const [error, setError] = useState(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedStatus, setSelectedStatus] = useState("All")
-  const [rejectionModal, setRejectionModal] = useState({ isOpen: false, specimenId: null })
-  const [rejectionReason, setRejectionReason] = useState("")
+const [rejectionReason, setRejectionReason] = useState("")
   const [barcodeModal, setBarcodeModal] = useState({ isOpen: false, specimen: null })
+  const [rejectionModal, setRejectionModal] = useState({ isOpen: false, specimenId: null })
+  // Additional state for test management
+  const [tests, setTests] = useState([])
+  const [selectedCategory, setSelectedCategory] = useState("All")
+  const [selectedTests, setSelectedTests] = useState([])
+  const [orderForm, setOrderForm] = useState({
+    patientId: "",
+    priority: "Routine",
+    collectionTime: "",
+    notes: ""
+  })
 
 const tabs = [
     { id: "collection", label: "Sample Collection", icon: "TestTube" },
