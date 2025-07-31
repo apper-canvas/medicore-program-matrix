@@ -1,37 +1,48 @@
-import React, { useState, useEffect } from "react"
-import ApperIcon from "@/components/ApperIcon"
-import Card from "@/components/atoms/Card"
-import Button from "@/components/atoms/Button"
-import Input from "@/components/atoms/Input"
-import Badge from "@/components/atoms/Badge"
-import FormField from "@/components/molecules/FormField"
-import Loading from "@/components/ui/Loading"
-import Error from "@/components/ui/Error"
-import laboratoryService from "@/services/api/laboratoryService"
-import patientService from "@/services/api/patientService"
-import { toast } from "react-toastify"
+import React, { useEffect, useState } from "react";
+import { toast } from "react-toastify";
+import laboratoryService from "@/services/api/laboratoryService";
+import patientService from "@/services/api/patientService";
+import ApperIcon from "@/components/ApperIcon";
+import FormField from "@/components/molecules/FormField";
+import Loading from "@/components/ui/Loading";
+import Error from "@/components/ui/Error";
+import Badge from "@/components/atoms/Badge";
+import Input from "@/components/atoms/Input";
+import Button from "@/components/atoms/Button";
+import Label from "@/components/atoms/Label";
+import Card from "@/components/atoms/Card";
 
 const Laboratory = () => {
-  const [activeTab, setActiveTab] = useState("orders")
-  const [tests, setTests] = useState([])
+const [activeTab, setActiveTab] = useState("collection")
   const [orders, setOrders] = useState([])
+  const [specimens, setSpecimens] = useState([])
   const [patients, setPatients] = useState([])
-  const [selectedTests, setSelectedTests] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState("All")
-  const [orderForm, setOrderForm] = useState({
-    patientId: "",
-    priority: "Routine",
-    collectionTime: "",
-    notes: ""
-  })
+  const [selectedStatus, setSelectedStatus] = useState("All")
+  const [rejectionModal, setRejectionModal] = useState({ isOpen: false, specimenId: null })
+  const [rejectionReason, setRejectionReason] = useState("")
+  const [barcodeModal, setBarcodeModal] = useState({ isOpen: false, specimen: null })
 
-  const tabs = [
-    { id: "orders", label: "Lab Orders", icon: "ClipboardList" },
-    { id: "catalog", label: "Test Catalog", icon: "Search" },
-    { id: "results", label: "Results", icon: "FileCheck" }
+const tabs = [
+    { id: "collection", label: "Sample Collection", icon: "TestTube" },
+    { id: "tracking", label: "Specimen Tracking", icon: "Truck" },
+    { id: "processing", label: "Lab Processing", icon: "Activity" },
+    { id: "results", label: "Results Management", icon: "FileCheck" }
+  ]
+
+  const statusFilters = ["All", "Pending", "Collected", "Received", "Processing", "Completed", "Rejected"]
+  
+  const rejectionReasons = [
+    "Insufficient sample volume",
+    "Hemolyzed specimen", 
+    "Clotted specimen",
+    "Incorrect container",
+    "Unlabeled specimen",
+    "Patient identification mismatch",
+    "Specimen leaked/broken",
+    "Expired collection container"
   ]
 
   const categories = ["All", "Blood", "Urine", "Imaging", "Specialized"]
@@ -40,16 +51,16 @@ const Laboratory = () => {
     loadData()
   }, [])
 
-  const loadData = async () => {
+const loadData = async () => {
     try {
       setLoading(true)
-      const [testsData, ordersData, patientsData] = await Promise.all([
-        laboratoryService.getAllTests(),
+      const [ordersData, specimensData, patientsData] = await Promise.all([
         laboratoryService.getAllOrders(),
+        laboratoryService.getAllSpecimens(),
         patientService.getAll()
       ])
-      setTests(testsData)
       setOrders(ordersData)
+      setSpecimens(specimensData)
       setPatients(patientsData)
       setError(null)
     } catch (err) {
@@ -58,6 +69,62 @@ const Laboratory = () => {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleGenerateBarcode = async (orderId) => {
+    try {
+      const barcode = await laboratoryService.generateSpecimenBarcode(orderId)
+      const specimen = specimens.find(s => s.orderId === orderId)
+      setBarcodeModal({ isOpen: true, specimen: { ...specimen, barcode } })
+      toast.success("Barcode generated successfully")
+    } catch (err) {
+      toast.error("Failed to generate barcode")
+    }
+  }
+
+  const handleUpdateStatus = async (specimenId, newStatus) => {
+    try {
+      await laboratoryService.updateSpecimenStatus(specimenId, newStatus)
+      await loadData()
+      toast.success(`Specimen status updated to ${newStatus}`)
+    } catch (err) {
+      toast.error("Failed to update specimen status")
+    }
+  }
+
+  const handleRejectSpecimen = async () => {
+    try {
+      await laboratoryService.rejectSpecimen(rejectionModal.specimenId, rejectionReason)
+      await loadData()
+      setRejectionModal({ isOpen: false, specimenId: null })
+      setRejectionReason("")
+      toast.success("Specimen rejected and reorder triggered")
+    } catch (err) {
+      toast.error("Failed to reject specimen")
+    }
+  }
+
+  const handlePrintLabel = (specimen) => {
+    const printWindow = window.open('', '_blank')
+    printWindow.document.write(`
+      <html>
+        <head><title>Specimen Label</title></head>
+        <body style="font-family: Arial; padding: 20px;">
+          <div style="border: 2px solid #000; padding: 15px; width: 300px;">
+            <h3>SPECIMEN LABEL</h3>
+            <p><strong>Barcode:</strong> ${specimen.barcode}</p>
+            <p><strong>Patient:</strong> ${specimen.patientName}</p>
+            <p><strong>Tests:</strong> ${specimen.tests}</p>
+            <p><strong>Collection Date:</strong> ${specimen.collectionDate}</p>
+            <div style="font-family: monospace; font-size: 24px; text-align: center; margin: 10px 0;">
+              ||||| ${specimen.barcode} |||||
+            </div>
+          </div>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+    printWindow.print()
   }
 
   const filteredTests = tests.filter(test => {
@@ -125,6 +192,17 @@ const Laboratory = () => {
       toast.error("Failed to delete lab order")
     }
   }
+const getStatusColor = (status) => {
+    switch (status) {
+      case "Pending": return "warning"
+      case "Collected": return "collected"
+      case "Received": return "info"
+      case "Processing": return "processing"
+      case "Completed": return "success"
+      case "Rejected": return "rejected"
+      default: return "default"
+    }
+  }
 
   const getPriorityColor = (priority) => {
     switch (priority) {
@@ -135,19 +213,18 @@ const Laboratory = () => {
     }
   }
 
-  const getCategoryColor = (category) => {
-    switch (category) {
-      case "Blood": return "error"
-      case "Urine": return "warning"
-      case "Imaging": return "info"
-      case "Specialized": return "primary"
-      default: return "default"
-    }
-  }
+  const filteredOrders = orders.filter(order => {
+    const matchesSearch = searchQuery === "" || 
+      order.Id.toString().includes(searchQuery) ||
+      patients.find(p => p.Id === order.patientId)?.firstName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      patients.find(p => p.Id === order.patientId)?.lastName?.toLowerCase().includes(searchQuery.toLowerCase())
+    
+    const matchesStatus = selectedStatus === "All" || order.collectionStatus === selectedStatus
+    return matchesSearch && matchesStatus
+  })
 
   if (loading) return <Loading />
   if (error) return <Error message={error} onRetry={loadData} />
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -177,29 +254,36 @@ const Laboratory = () => {
         </nav>
       </div>
 
-      {/* Lab Orders Tab */}
-      {activeTab === "orders" && (
+{/* Sample Collection Tab */}
+      {activeTab === "collection" && (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">Lab Orders</h2>
-            <Button onClick={() => setActiveTab("catalog")}>
-              <ApperIcon name="Plus" size={16} className="mr-2" />
-              New Order
-            </Button>
+            <h2 className="text-xl font-semibold text-gray-900">Sample Collection Workflow</h2>
+            <div className="flex items-center space-x-4">
+              <Input
+                placeholder="Search orders or patients..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-64"
+              />
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                {statusFilters.map(status => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <Card>
             <div className="space-y-4">
-              {orders.length === 0 ? (
+              {filteredOrders.length === 0 ? (
                 <div className="text-center py-8">
                   <ApperIcon name="TestTube" className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">No lab orders found</p>
-                  <Button 
-                    className="mt-4" 
-                    onClick={() => setActiveTab("catalog")}
-                  >
-                    Create First Order
-                  </Button>
+                  <p className="text-gray-500">No pending collections found</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -210,10 +294,13 @@ const Laboratory = () => {
                           Order ID
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Patient
+                          Patient Info
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Tests
+                          Tests Ordered
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Collection Requirements
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Priority
@@ -222,28 +309,57 @@ const Laboratory = () => {
                           Status
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Collection Time
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Actions
                         </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {orders.map((order) => {
+                      {filteredOrders.map((order) => {
                         const patient = patients.find(p => p.Id === order.patientId)
                         return (
                           <tr key={order.Id}>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                               #{order.Id}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
+                            <td className="px-6 py-4 text-sm text-gray-900">
+                              <div>
+                                <div className="font-medium">
+                                  {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
+                                </div>
+                                <div className="text-gray-500">
+                                  DOB: {patient?.dateOfBirth || "N/A"} | 
+                                  ID: {patient?.patientId || "N/A"}
+                                </div>
+                              </div>
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-900">
                               <div className="max-w-xs">
-                                {order.tests?.slice(0, 2).map(test => test.name).join(", ")}
-                                {order.tests?.length > 2 && ` +${order.tests.length - 2} more`}
+                                {order.tests?.map(test => (
+                                  <div key={test.Id} className="mb-1">
+                                    <span className="font-medium">{test.name}</span>
+                                    <span className="text-gray-500 ml-2">({test.code})</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-900">
+                              <div className="space-y-1">
+                                {order.requirements?.specimenTypes?.map((type, idx) => (
+                                  <div key={idx}>
+                                    <Badge variant="info" className="text-xs mr-1">{type}</Badge>
+                                  </div>
+                                ))}
+                                {order.requirements?.fastingRequired && (
+                                  <div className="text-red-600 text-xs">
+                                    <ApperIcon name="Clock" size={12} className="inline mr-1" />
+                                    Fasting: {order.requirements.fastingHours}hrs
+                                  </div>
+                                )}
+                                {order.requirements?.specialInstructions && (
+                                  <div className="text-orange-600 text-xs">
+                                    {order.requirements.specialInstructions}
+                                  </div>
+                                )}
                               </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
@@ -252,22 +368,51 @@ const Laboratory = () => {
                               </Badge>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <Badge variant={order.status === "Completed" ? "success" : "warning"}>
+                              <Badge variant={getStatusColor(order.collectionStatus)}>
                                 {order.collectionStatus}
                               </Badge>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {order.collectionTime || "Not scheduled"}
-                            </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               <div className="flex space-x-2">
-                                <Button 
-                                  size="sm" 
-                                  variant="ghost"
-                                  onClick={() => handleDeleteOrder(order.Id)}
-                                >
-                                  <ApperIcon name="Trash2" size={16} />
-                                </Button>
+                                {order.collectionStatus === "Pending" && (
+                                  <>
+                                    <Button 
+                                      size="sm" 
+                                      onClick={() => handleGenerateBarcode(order.Id)}
+                                      title="Generate Barcode"
+                                    >
+                                      <ApperIcon name="QrCode" size={16} />
+                                    </Button>
+                                    <Button 
+                                      size="sm" 
+                                      variant="success"
+                                      onClick={() => handleUpdateStatus(order.Id, "Collected")}
+                                      title="Mark as Collected"
+                                    >
+                                      <ApperIcon name="Check" size={16} />
+                                    </Button>
+                                  </>
+                                )}
+                                {order.collectionStatus === "Collected" && (
+                                  <Button 
+                                    size="sm" 
+                                    variant="info"
+                                    onClick={() => handleUpdateStatus(order.Id, "Received")}
+                                    title="Receive in Lab"
+                                  >
+                                    <ApperIcon name="Package" size={16} />
+                                  </Button>
+                                )}
+                                {(order.collectionStatus === "Collected" || order.collectionStatus === "Received") && (
+                                  <Button 
+                                    size="sm" 
+                                    variant="error"
+                                    onClick={() => setRejectionModal({ isOpen: true, specimenId: order.Id })}
+                                    title="Reject Specimen"
+                                  >
+                                    <ApperIcon name="X" size={16} />
+                                  </Button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -282,211 +427,241 @@ const Laboratory = () => {
         </div>
       )}
 
-      {/* Test Catalog Tab */}
-      {activeTab === "catalog" && (
+      {/* Specimen Tracking Tab */}
+      {activeTab === "tracking" && (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">Test Catalog</h2>
-            {selectedTests.length > 0 && (
-              <Badge variant="primary" className="text-sm">
-                {selectedTests.length} test{selectedTests.length !== 1 ? 's' : ''} selected
-              </Badge>
-            )}
+            <h2 className="text-xl font-semibold text-gray-900">Specimen Tracking</h2>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="text-center">
+              <div className="text-2xl font-bold text-blue-600">
+                {orders.filter(o => o.collectionStatus === "Pending").length}
+              </div>
+              <div className="text-sm text-gray-600">Pending Collection</div>
+            </Card>
+            <Card className="text-center">
+              <div className="text-2xl font-bold text-green-600">
+                {orders.filter(o => o.collectionStatus === "Collected").length}
+              </div>
+              <div className="text-sm text-gray-600">Collected</div>
+            </Card>
+            <Card className="text-center">
+              <div className="text-2xl font-bold text-orange-600">
+                {orders.filter(o => o.collectionStatus === "Processing").length}
+              </div>
+              <div className="text-sm text-gray-600">In Processing</div>
+            </Card>
+            <Card className="text-center">
+              <div className="text-2xl font-bold text-red-600">
+                {orders.filter(o => o.collectionStatus === "Rejected").length}
+              </div>
+              <div className="text-sm text-gray-600">Rejected</div>
+            </Card>
           </div>
 
-          {/* Search and Filters */}
           <Card>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Input
-                  placeholder="Search tests..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                >
-                  {categories.map(category => (
-                    <option key={category} value={category}>{category}</option>
-                  ))}
-                </select>
-              </div>
+            <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
+            <div className="space-y-3">
+              {orders.slice(0, 10).map(order => {
+                const patient = patients.find(p => p.Id === order.patientId)
+                return (
+                  <div key={order.Id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <div className="font-medium">
+                        Order #{order.Id} - {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        {order.tests?.length || 0} tests ordered
+                      </div>
+                    </div>
+                    <Badge variant={getStatusColor(order.collectionStatus)}>
+                      {order.collectionStatus}
+                    </Badge>
+                  </div>
+                )
+              })}
             </div>
           </Card>
-
-          {/* Test Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredTests.map((test) => {
-              const isSelected = selectedTests.some(t => t.Id === test.Id)
-              return (
-                <Card 
-                  key={test.Id}
-                  className={`cursor-pointer transition-all ${
-                    isSelected ? "ring-2 ring-primary-500 bg-primary-50" : "hover:shadow-card-hover"
-                  }`}
-                  onClick={() => handleTestSelection(test)}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <h3 className="font-medium text-gray-900">{test.name}</h3>
-                        <Badge variant={getCategoryColor(test.category)} className="text-xs">
-                          {test.category}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-gray-600 mb-2">{test.description}</p>
-                      <div className="text-xs text-gray-500 space-y-1">
-                        <div>Code: {test.code}</div>
-                        <div>Specimen: {test.specimenType}</div>
-                        {test.fastingRequired && (
-                          <div className="text-orange-600">Fasting: {test.fastingHours}h</div>
-                        )}
-                        <div>TAT: {test.turnaroundTime}</div>
-                        <div className="font-medium text-gray-900">${test.price}</div>
-                      </div>
-                    </div>
-                    <div className="ml-2">
-                      {isSelected ? (
-                        <ApperIcon name="CheckCircle" className="h-5 w-5 text-primary-500" />
-                      ) : (
-                        <ApperIcon name="Circle" className="h-5 w-5 text-gray-400" />
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              )
-            })}
-          </div>
-
-          {/* Order Summary */}
-          {selectedTests.length > 0 && (
-            <Card className="bg-gray-50">
-              <div className="space-y-4">
-                <h3 className="font-medium text-gray-900">Order Summary</h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Selected Tests ({selectedTests.length})</h4>
-                    <div className="space-y-1 text-sm text-gray-600">
-                      {selectedTests.map(test => (
-                        <div key={test.Id} className="flex justify-between">
-                          <span>{test.name}</span>
-                          <span>${test.price}</span>
-                        </div>
-                      ))}
-                      <div className="border-t pt-1 font-medium text-gray-900">
-                        <div className="flex justify-between">
-                          <span>Total</span>
-                          <span>${selectedTests.reduce((sum, test) => sum + test.price, 0)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Collection Requirements</h4>
-                    {(() => {
-                      const requirements = calculateOrderRequirements()
-                      return (
-                        <div className="space-y-2 text-sm text-gray-600">
-                          {requirements?.specimenTypes.map((specimen, index) => (
-                            <div key={index}>• {specimen}</div>
-                          ))}
-                          {requirements?.fastingRequired && (
-                            <div className="text-orange-600 font-medium">
-                              ⚠ Fasting required: {requirements.fastingHours} hours
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })()}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <FormField
-                    label="Patient"
-                    type="select"
-                    value={orderForm.patientId}
-                    onChange={(e) => setOrderForm({...orderForm, patientId: e.target.value})}
-                    options={[
-                      { value: "", label: "Select patient..." },
-                      ...patients.map(patient => ({
-                        value: patient.Id,
-                        label: `${patient.firstName} ${patient.lastName}`
-                      }))
-                    ]}
-                  />
-                  
-                  <FormField
-                    label="Priority"
-                    type="select"
-                    value={orderForm.priority}
-                    onChange={(e) => setOrderForm({...orderForm, priority: e.target.value})}
-                    options={laboratoryService.getPriorityLevels().map(priority => ({
-                      value: priority,
-                      label: priority
-                    }))}
-                  />
-                  
-                  <FormField
-                    label="Collection Time"
-                    type="select"
-                    value={orderForm.collectionTime}
-                    onChange={(e) => setOrderForm({...orderForm, collectionTime: e.target.value})}
-                    options={[
-                      { value: "", label: "Select time..." },
-                      ...laboratoryService.getCollectionTimeSlots().map(slot => ({
-                        value: slot,
-                        label: slot
-                      }))
-                    ]}
-                  />
-                </div>
-
-                <FormField
-                  label="Notes"
-                  value={orderForm.notes}
-                  onChange={(e) => setOrderForm({...orderForm, notes: e.target.value})}
-                  placeholder="Additional instructions..."
-                />
-
-                <div className="flex space-x-4">
-                  <Button onClick={handleCreateOrder}>
-                    <ApperIcon name="Plus" size={16} className="mr-2" />
-                    Create Order
-                  </Button>
-                  <Button 
-                    variant="secondary"
-                    onClick={() => setSelectedTests([])}
-                  >
-                    Clear Selection
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          )}
         </div>
       )}
 
-      {/* Results Tab */}
-      {activeTab === "results" && (
-        <Card className="text-center py-16">
-          <div className="max-w-md mx-auto">
-            <ApperIcon name="FileCheck" className="h-16 w-16 text-gray-400 mx-auto mb-6" />
-            <h3 className="text-xl font-semibold text-gray-900 mb-4">Results Module</h3>
-            <p className="text-gray-600 mb-6">
-              Results entry and reporting functionality will be available here.
-            </p>
+      {/* Lab Processing Tab */}
+      {activeTab === "processing" && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-gray-900">Lab Processing</h2>
           </div>
-        </Card>
+          
+          <Card>
+            <h3 className="text-lg font-semibold mb-4">Specimens Ready for Processing</h3>
+            <div className="space-y-4">
+              {orders.filter(o => o.collectionStatus === "Received").map(order => {
+                const patient = patients.find(p => p.Id === order.patientId)
+                return (
+                  <div key={order.Id} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-medium">
+                          Order #{order.Id} - {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          Tests: {order.tests?.map(t => t.name).join(", ")}
+                        </div>
+                      </div>
+                      <Button 
+                        onClick={() => handleUpdateStatus(order.Id, "Processing")}
+                        variant="primary"
+                      >
+                        Start Processing
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Results Management Tab */}
+      {activeTab === "results" && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-gray-900">Results Management</h2>
+          </div>
+          
+          <Card>
+            <h3 className="text-lg font-semibold mb-4">Processing Queue</h3>
+            <div className="space-y-4">
+              {orders.filter(o => o.collectionStatus === "Processing").map(order => {
+                const patient = patients.find(p => p.Id === order.patientId)
+                return (
+                  <div key={order.Id} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-medium">
+                          Order #{order.Id} - {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          Tests: {order.tests?.map(t => t.name).join(", ")}
+                        </div>
+                      </div>
+                      <Button 
+                        onClick={() => handleUpdateStatus(order.Id, "Completed")}
+                        variant="success"
+                      >
+                        Complete Results
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Barcode Modal */}
+      {barcodeModal.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Specimen Barcode</h3>
+              <Button 
+                variant="ghost" 
+                onClick={() => setBarcodeModal({ isOpen: false, specimen: null })}
+              >
+                <ApperIcon name="X" size={16} />
+              </Button>
+            </div>
+            
+            {barcodeModal.specimen && (
+              <div className="text-center space-y-4">
+                <div className="border-2 border-dashed border-gray-300 p-4 rounded-lg">
+                  <div className="font-mono text-xl font-bold">
+                    {barcodeModal.specimen.barcode}
+                  </div>
+                  <div className="text-xs text-gray-600 mt-2">
+                    ||||| {barcodeModal.specimen.barcode} |||||
+                  </div>
+                </div>
+                
+                <div className="text-left space-y-2">
+                  <div><strong>Patient:</strong> {barcodeModal.specimen.patientName}</div>
+                  <div><strong>Tests:</strong> {barcodeModal.specimen.tests}</div>
+                  <div><strong>Collection Date:</strong> {new Date().toLocaleDateString()}</div>
+                </div>
+                
+                <Button 
+                  onClick={() => handlePrintLabel(barcodeModal.specimen)}
+                  variant="primary"
+                  className="w-full"
+                >
+                  <ApperIcon name="Printer" size={16} className="mr-2" />
+                  Print Label
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Rejection Modal */}
+      {rejectionModal.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Reject Specimen</h3>
+              <Button 
+                variant="ghost" 
+                onClick={() => setRejectionModal({ isOpen: false, specimenId: null })}
+              >
+                <ApperIcon name="X" size={16} />
+              </Button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Rejection Reason
+                </label>
+                <select
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="">Select reason...</option>
+                  {rejectionReasons.map(reason => (
+                    <option key={reason} value={reason}>{reason}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="flex space-x-3">
+                <Button 
+                  variant="error"
+                  onClick={handleRejectSpecimen}
+                  disabled={!rejectionReason}
+                  className="flex-1"
+                >
+                  Reject & Reorder
+                </Button>
+                <Button 
+                  variant="ghost"
+                  onClick={() => setRejectionModal({ isOpen: false, specimenId: null })}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
 }
+
 export default Laboratory

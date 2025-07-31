@@ -1,3 +1,5 @@
+import React from "react";
+import Error from "@/components/ui/Error";
 const labTestCatalog = [
   // Blood Tests
   { 
@@ -269,7 +271,7 @@ class LaboratoryService {
     return { ...order };
   }
 
-  async createOrder(orderData) {
+async createOrder(orderData) {
     await new Promise(resolve => setTimeout(resolve, 400));
     
     // Generate new ID
@@ -292,7 +294,7 @@ class LaboratoryService {
       totalPrice: testsWithDetails.reduce((sum, test) => sum + test.price, 0),
       status: "Pending",
       orderDate: new Date().toISOString(),
-      collectionStatus: "Not Collected",
+      collectionStatus: "Pending",
       resultsStatus: "Pending"
     };
     
@@ -317,9 +319,125 @@ class LaboratoryService {
     return { ...this.orders[index] };
   }
 
-  async deleteOrder(id) {
+  async getAllSpecimens() {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    return this.orders.map(order => ({
+      Id: order.Id,
+      orderId: order.Id,
+      patientId: order.patientId,
+      barcode: order.barcode || null,
+      status: order.collectionStatus,
+      collectionDate: order.collectionDate || null,
+      tests: order.tests?.map(t => t.name).join(", ") || "",
+      priority: order.priority
+    }));
+  }
+
+  async generateSpecimenBarcode(orderId) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    const order = this.orders.find(o => o.Id === parseInt(orderId));
+    if (!order) {
+      throw new Error("Order not found");
+    }
+    
+    // Generate barcode (timestamp + order ID)
+    const barcode = `SPE${Date.now().toString().slice(-8)}${orderId.toString().padStart(4, '0')}`;
+    
+    // Update order with barcode
+    order.barcode = barcode;
+    order.barcodeGenerated = new Date().toISOString();
+    
+    return barcode;
+  }
+
+  async updateSpecimenStatus(specimenId, newStatus) {
     await new Promise(resolve => setTimeout(resolve, 300));
     
+    const order = this.orders.find(o => o.Id === parseInt(specimenId));
+    if (!order) {
+      throw new Error("Specimen not found");
+    }
+    
+    order.collectionStatus = newStatus;
+    order.lastStatusUpdate = new Date().toISOString();
+    
+    // Track status history
+    if (!order.statusHistory) {
+      order.statusHistory = [];
+    }
+    order.statusHistory.push({
+      status: newStatus,
+      timestamp: new Date().toISOString()
+    });
+    
+    return { ...order };
+  }
+
+  async rejectSpecimen(specimenId, rejectionReason) {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    const order = this.orders.find(o => o.Id === parseInt(specimenId));
+    if (!order) {
+      throw new Error("Specimen not found");
+    }
+    
+    // Update original order as rejected
+    order.collectionStatus = "Rejected";
+    order.rejectionReason = rejectionReason;
+    order.rejectionDate = new Date().toISOString();
+    
+    // Create new order (reorder)
+    const maxId = Math.max(...this.orders.map(o => o.Id), 0);
+    const reOrder = {
+      ...order,
+      Id: maxId + 1,
+      collectionStatus: "Pending", 
+      originalOrderId: order.Id,
+      isReorder: true,
+      reorderReason: rejectionReason,
+      orderDate: new Date().toISOString(),
+      barcode: null,
+      statusHistory: []
+    };
+    
+    this.orders.push(reOrder);
+    
+    return { rejectedOrder: order, newOrder: reOrder };
+  }
+
+  async getSpecimenByBarcode(barcode) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    const order = this.orders.find(o => o.barcode === barcode);
+    if (!order) {
+      throw new Error("Specimen not found");
+    }
+    
+    return {
+      ...order,
+      specimenId: order.Id,
+      tests: order.tests
+    };
+  }
+
+  getRejectionReasons() {
+    return [
+      "Insufficient sample volume",
+      "Hemolyzed specimen", 
+      "Clotted specimen",
+      "Incorrect container",
+      "Unlabeled specimen",
+      "Patient identification mismatch",
+      "Specimen leaked/broken",
+      "Expired collection container",
+"Temperature excursion",
+      "Contaminated specimen"
+    ];
+  }
+
+  async deleteOrder(id) {
+    await new Promise(resolve => setTimeout(resolve, 300));
     const index = this.orders.findIndex(o => o.Id === parseInt(id));
     if (index === -1) {
       throw new Error("Order not found");
@@ -368,8 +486,19 @@ class LaboratoryService {
       "14:00 - 15:00",
       "15:00 - 16:00",
       "16:00 - 17:00"
-    ];
+];
   }
+
+  getWorkflowStatuses() {
+    return [
+      { status: "Pending", description: "Awaiting sample collection", color: "warning" },
+      { status: "Collected", description: "Sample collected, needs transport", color: "collected" },
+      { status: "Received", description: "Received in laboratory", color: "info" },
+      { status: "Processing", description: "Currently being analyzed", color: "processing" },
+      { status: "Completed", description: "Results available", color: "success" },
+      { status: "Rejected", description: "Specimen rejected", color: "rejected" }
+    ];
+}
 }
 
 export default new LaboratoryService();
