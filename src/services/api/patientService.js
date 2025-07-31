@@ -107,6 +107,23 @@ async getLabOrders(patientId) {
       patientId: parseInt(patientId)
     })
   }
+
+  async getRadiologyOrders(patientId) {
+    await new Promise(resolve => setTimeout(resolve, 200))
+    // This would typically call the radiology service
+    const radiologyService = await import('./radiologyService.js')
+    return radiologyService.default.getByPatient(patientId)
+  }
+
+  async createRadiologyOrder(patientId, orderData) {
+    await new Promise(resolve => setTimeout(resolve, 300))
+    // This would typically create radiology order through radiology service
+    const radiologyService = await import('./radiologyService.js')
+    return radiologyService.default.create({
+      ...orderData,
+      patientId: parseInt(patientId)
+    })
+  }
 }
 
 export default new PatientService()
