@@ -1,19 +1,20 @@
-import React, { useState, useEffect } from "react"
-import { toast } from "react-toastify"
-import ApperIcon from "@/components/ApperIcon"
-import Card from "@/components/atoms/Card"
-import MetricCard from "@/components/molecules/MetricCard"
-import Button from "@/components/atoms/Button"
-import Badge from "@/components/atoms/Badge"
-import Input from "@/components/atoms/Input"
-import Label from "@/components/atoms/Label"
-import SearchBar from "@/components/molecules/SearchBar"
-import Loading from "@/components/ui/Loading"
-import Error from "@/components/ui/Error"
-import Empty from "@/components/ui/Empty"
-import prescriptionService from "@/services/api/prescriptionService"
-import medicationService from "@/services/api/medicationService"
-import allergyService from "@/services/api/allergyService"
+import React, { useEffect, useState } from "react";
+import { toast } from "react-toastify";
+import prescriptionService from "@/services/api/prescriptionService";
+import medicationService from "@/services/api/medicationService";
+import allergyService from "@/services/api/allergyService";
+import ApperIcon from "@/components/ApperIcon";
+import SearchBar from "@/components/molecules/SearchBar";
+import MetricCard from "@/components/molecules/MetricCard";
+import Loading from "@/components/ui/Loading";
+import Error from "@/components/ui/Error";
+import Empty from "@/components/ui/Empty";
+import Patients from "@/components/pages/Patients";
+import Badge from "@/components/atoms/Badge";
+import Input from "@/components/atoms/Input";
+import Button from "@/components/atoms/Button";
+import Label from "@/components/atoms/Label";
+import Card from "@/components/atoms/Card";
 
 const Pharmacy = () => {
 const [activeTab, setActiveTab] = useState("queue")
@@ -28,11 +29,14 @@ const [activeTab, setActiveTab] = useState("queue")
   // Inventory states
   const [inventory, setInventory] = useState([])
   const [inventoryStats, setInventoryStats] = useState(null)
-  const [inventoryFilter, setInventoryFilter] = useState("all")
+const [inventoryFilter, setInventoryFilter] = useState("all")
   const [inventorySort, setInventorySort] = useState("name")
   const [selectedDrug, setSelectedDrug] = useState(null)
   const [showReorderModal, setShowReorderModal] = useState(false)
-
+  const [recalls, setRecalls] = useState([])
+  const [showRecallModal, setShowRecallModal] = useState(false)
+  const [selectedRecall, setSelectedRecall] = useState(null)
+  const [batchTracker, setBatchTracker] = useState([])
   // Disposal states
   const [showDisposalModal, setShowDisposalModal] = useState(false)
   const [disposalData, setDisposalData] = useState({
@@ -55,11 +59,13 @@ const [activeTab, setActiveTab] = useState("queue")
     allergies: [],
     notes: ""
   })
-  const [dispensingData, setDispensingData] = useState({
+const [dispensingData, setDispensingData] = useState({
     barcodeScanned: false,
     lotNumber: "",
     expirationDate: "",
     quantityVerified: false,
+    batchVerified: false,
+    recallChecked: false,
     dispensedBy: "Current Pharmacist"
   })
   const [counselingData, setCounselingData] = useState({
@@ -84,7 +90,9 @@ useEffect(() => {
 
   useEffect(() => {
     if (activeTab === "inventory") {
-      loadInventory()
+loadInventory()
+      loadRecalls()
+      loadBatchTracker()
     }
   }, [activeTab])
   const loadPrescriptions = async () => {
@@ -109,7 +117,7 @@ console.error("Failed to load workflow stats:", err)
     }
   }
 
-  async function loadInventory() {
+async function loadInventory() {
     try {
       setLoading(true)
       const [inventoryData, stats] = await Promise.all([
@@ -126,14 +134,33 @@ console.error("Failed to load workflow stats:", err)
     }
   }
 
-  function filterInventory() {
+  async function loadRecalls() {
+    try {
+      const recallData = await medicationService.getActiveRecalls()
+      setRecalls(recallData)
+    } catch (err) {
+      console.error("Failed to load recalls:", err)
+    }
+  }
+
+  async function loadBatchTracker() {
+    try {
+      const batchData = await medicationService.getBatchTracker()
+      setBatchTracker(batchData)
+    } catch (err) {
+      console.error("Failed to load batch tracker:", err)
+    }
+  }
+
+function filterInventory() {
     let filtered = inventory
 
     if (searchTerm) {
       filtered = filtered.filter(item =>
         item.drugName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.manufacturer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.ndc.includes(searchTerm)
+        item.ndc.includes(searchTerm) ||
+        item.lotNumber?.toLowerCase().includes(searchTerm.toLowerCase())
       )
     }
 
@@ -149,6 +176,10 @@ console.error("Failed to load workflow stats:", err)
             return new Date(item.expiryDate) < new Date()
           case "out_of_stock":
             return item.currentStock === 0
+          case "recalled":
+            return isRecalledBatch(item.lotNumber)
+          case "batch_tracking":
+            return item.lotNumber && item.lotNumber !== ""
           default:
             return true
         }
@@ -166,6 +197,8 @@ console.error("Failed to load workflow stats:", err)
           return new Date(a.expiryDate) - new Date(b.expiryDate)
         case "reorder":
           return (a.currentStock - a.reorderPoint) - (b.currentStock - b.reorderPoint)
+        case "lot":
+          return (a.lotNumber || "").localeCompare(b.lotNumber || "")
         default:
           return 0
       }
@@ -174,11 +207,33 @@ console.error("Failed to load workflow stats:", err)
     return filtered
   }
 
-  async function handleUpdateStock(drugId, newStock) {
+  function isRecalledBatch(lotNumber) {
+    return recalls.some(recall => 
+      recall.affectedLots.includes(lotNumber) && recall.status === "active"
+    )
+  }
+
+  async function handleRecallAction(recall, action) {
     try {
-      await medicationService.updateStock(drugId, newStock)
+      if (action === "notify_patients") {
+        await medicationService.notifyRecallPatients(recall.Id)
+        toast.success("Patient notifications sent successfully")
+      } else if (action === "quarantine_stock") {
+        await medicationService.quarantineRecalledStock(recall.Id)
+        toast.success("Affected stock quarantined")
+        await loadInventory()
+      }
+    } catch (err) {
+      toast.error(`Failed to ${action.replace('_', ' ')}`)
+    }
+  }
+
+async function handleUpdateStock(drugId, newStock, lotNumber = null) {
+    try {
+      await medicationService.updateStock(drugId, newStock, lotNumber)
       await loadInventory()
-      toast.success("Stock updated successfully")
+      await loadBatchTracker()
+      toast.success("Stock updated successfully with batch tracking")
     } catch (err) {
       toast.error("Failed to update stock")
     }
@@ -209,15 +264,17 @@ const daysUntilExpiry = Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 
     return "success"
   }
 
-  const handleDisposeMedication = async (item) => {
+const handleDisposeMedication = async (item) => {
     setSelectedDrug(item)
     setDisposalData({
       quantity: item.currentStock.toString(),
-      disposalReason: "Expired medication",
+      disposalReason: isRecalledBatch(item.lotNumber) ? "Recalled medication" : "Expired medication",
       disposalMethod: "DEA approved incinerator",
       witness: "",
       disposedBy: "Current Pharmacist",
-      complianceNotes: "DEA Form 41 to be completed"
+      complianceNotes: isRecalledBatch(item.lotNumber) 
+        ? "Recall disposal - FDA notification compliance required"
+        : "DEA Form 41 to be completed"
     })
     setShowDisposalModal(true)
   }
@@ -228,17 +285,20 @@ const daysUntilExpiry = Math.ceil((new Date(expiryDate) - new Date()) / (1000 * 
         ...disposalData,
         drugName: selectedDrug.drugName,
         lotNumber: selectedDrug.lotNumber,
+        batchId: selectedDrug.batchId,
         unit: selectedDrug.unit,
         expiryDate: selectedDrug.expiryDate,
         location: selectedDrug.location,
         costPerUnit: selectedDrug.costPerUnit,
-        quantity: parseInt(disposalData.quantity)
+        quantity: parseInt(disposalData.quantity),
+        isRecallDisposal: isRecalledBatch(selectedDrug.lotNumber)
       }
 
       await medicationService.disposeMedication(selectedDrug.Id, disposalInfo)
       await loadInventory()
+      await loadBatchTracker()
       setShowDisposalModal(false)
-      toast.success("Medication disposed successfully with compliance documentation")
+      toast.success("Medication disposed successfully with batch compliance documentation")
     } catch (err) {
       toast.error("Failed to dispose medication")
     }
@@ -431,11 +491,12 @@ const tabs = [
     { id: "review", name: "Review & Verify", icon: "Shield", count: prescriptions.filter(p => ["Verified", "Requires Review"].includes(p.status)).length },
     { id: "dispensing", name: "Dispensing", icon: "Package", count: prescriptions.filter(p => p.status === "Verified").length },
     { id: "counseling", name: "Patient Counseling", icon: "MessageSquare", count: prescriptions.filter(p => p.status === "Dispensed").length },
-    { id: "inventory", name: "Drug Inventory", icon: "Database", count: inventory.filter(item => item.currentStock <= item.reorderPoint).length }
+    { id: "inventory", name: "Drug Inventory", icon: "Database", count: inventory.filter(item => item.currentStock <= item.reorderPoint).length },
+    { id: "batch_tracking", name: "Batch Tracking", icon: "Package2", count: recalls.filter(r => r.status === "active").length }
   ]
 
-  if (loading) return <Loading />
-  if (error) return <Error message={error} onRetry={loadPrescriptions} />
+if (loading) return <Loading />
+  if (error) return <Error message={error} onRetry={() => { loadPrescriptions(); loadInventory(); loadRecalls(); }} />
 
   return (
     <div className="space-y-6">
@@ -476,6 +537,33 @@ const tabs = [
               value={inventoryStats.outOfStock}
               icon="XCircle"
               color="error"
+            />
+          </div>
+        ) : activeTab === "batch_tracking" ? (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <MetricCard
+              title="Active Recalls"
+              value={recalls.filter(r => r.status === "active").length}
+              icon="AlertTriangle"
+              color="error"
+            />
+            <MetricCard
+              title="Tracked Batches"
+              value={batchTracker.length}
+              icon="Package2"
+              color="primary"
+            />
+            <MetricCard
+              title="Quarantined Stock"
+              value={inventory.filter(item => isRecalledBatch(item.lotNumber)).length}
+              icon="ShieldAlert"
+              color="warning"
+            />
+            <MetricCard
+              title="Patients Notified"
+              value={recalls.reduce((sum, r) => sum + (r.patientsNotified || 0), 0)}
+              icon="Users"
+              color="info"
             />
           </div>
         ) : workflowStats && (
@@ -559,7 +647,102 @@ const tabs = [
           </div>
 
           {/* Inventory Content */}
-          {filterInventory().length === 0 ? (
+{activeTab === "batch_tracking" ? (
+            <div className="space-y-6">
+              {/* Active Recalls */}
+              {recalls.filter(r => r.status === "active").length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <h3 className="text-lg font-semibold text-red-800 mb-3">
+                    <ApperIcon name="AlertTriangle" size={20} className="inline mr-2" />
+                    Active FDA Recalls
+                  </h3>
+                  <div className="space-y-3">
+                    {recalls.filter(r => r.status === "active").map(recall => (
+                      <div key={recall.Id} className="bg-white border border-red-300 rounded p-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-semibold text-red-800">{recall.drugName}</h4>
+                            <p className="text-sm text-red-600 mb-2">{recall.reason}</p>
+                            <p className="text-xs text-gray-600">
+                              Affected Lots: {recall.affectedLots.join(", ")}
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              Recall Date: {new Date(recall.recallDate).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div className="flex flex-col space-y-2">
+                            <Button
+                              onClick={() => handleRecallAction(recall, "notify_patients")}
+                              variant="error"
+                              size="sm"
+                            >
+                              <ApperIcon name="Users" size={16} className="mr-1" />
+                              Notify Patients
+                            </Button>
+                            <Button
+                              onClick={() => handleRecallAction(recall, "quarantine_stock")}
+                              variant="warning"
+                              size="sm"
+                            >
+                              <ApperIcon name="ShieldAlert" size={16} className="mr-1" />
+                              Quarantine Stock
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Batch Tracking Table */}
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold mb-4">Batch Tracking History</h3>
+                {batchTracker.length === 0 ? (
+                  <Empty message="No batch tracking data available" />
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-2">Drug Name</th>
+                          <th className="text-left py-2">Lot Number</th>
+                          <th className="text-left py-2">Received Date</th>
+                          <th className="text-left py-2">Expiry Date</th>
+                          <th className="text-left py-2">Current Stock</th>
+                          <th className="text-left py-2">Dispensed</th>
+                          <th className="text-left py-2">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {batchTracker.map(batch => (
+                          <tr key={batch.Id} className="border-b hover:bg-gray-50">
+                            <td className="py-2">{batch.drugName}</td>
+                            <td className="py-2 font-mono">{batch.lotNumber}</td>
+                            <td className="py-2">{new Date(batch.receivedDate).toLocaleDateString()}</td>
+                            <td className="py-2">{new Date(batch.expiryDate).toLocaleDateString()}</td>
+                            <td className="py-2">{batch.currentStock} {batch.unit}</td>
+                            <td className="py-2">{batch.dispensedCount || 0}</td>
+                            <td className="py-2">
+                              <Badge variant={
+                                isRecalledBatch(batch.lotNumber) ? "error" :
+                                new Date(batch.expiryDate) < new Date() ? "error" :
+                                "success"
+                              }>
+                                {isRecalledBatch(batch.lotNumber) ? "RECALLED" :
+                                 new Date(batch.expiryDate) < new Date() ? "EXPIRED" :
+                                 "ACTIVE"}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
+            </div>
+          ) : filterInventory().length === 0 ? (
             <Empty message="No inventory items found" />
           ) : (
             <div className="grid gap-6">
@@ -567,9 +750,10 @@ const tabs = [
                 const daysUntilExpiry = Math.ceil((new Date(item.expiryDate) - new Date()) / (1000 * 60 * 60 * 24))
                 const stockStatus = getStockStatusColor(item)
                 const expiryStatus = getExpiryStatusColor(item.expiryDate)
+                const isRecalled = isRecalledBatch(item.lotNumber)
                 
                 return (
-                  <Card key={item.Id} className="p-6">
+                  <Card key={item.Id} className={`p-6 ${isRecalled ? 'border-red-300 bg-red-50' : ''}`}>
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         {/* Header */}
@@ -581,11 +765,16 @@ const tabs = [
                             {item.currentStock === 0 ? "Out of Stock" : 
                              item.currentStock <= item.reorderPoint ? "Low Stock" : "In Stock"}
                           </Badge>
-<Badge variant={expiryStatus}>
+                          <Badge variant={expiryStatus}>
                             {daysUntilExpiry < 0 ? "EXPIRED" :
                              daysUntilExpiry <= 30 ? "Expires Soon" :
                              daysUntilExpiry <= 90 ? "Expiring" : "Good"}
                           </Badge>
+                          {isRecalled && (
+                            <Badge variant="error" className="ml-2 animate-pulse">
+                              🚨 FDA RECALL
+                            </Badge>
+                          )}
                           {daysUntilExpiry < 0 && (
                             <Badge variant="error" className="ml-2">
                               DISPOSAL REQUIRED
@@ -594,7 +783,7 @@ const tabs = [
                         </div>
 
                         {/* Drug Info */}
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
                           <div>
                             <div className="text-sm text-gray-500">NDC</div>
                             <div className="font-medium">{item.ndc}</div>
@@ -610,6 +799,10 @@ const tabs = [
                           <div>
                             <div className="text-sm text-gray-500">Strength</div>
                             <div className="font-medium">{item.strength}</div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-gray-500">Lot Number</div>
+                            <div className="font-medium font-mono">{item.lotNumber || "N/A"}</div>
                           </div>
                         </div>
 
@@ -649,12 +842,25 @@ const tabs = [
                         </div>
 
                         {/* Alerts */}
-                        {(item.currentStock <= item.reorderPoint || daysUntilExpiry <= 90) && (
-                          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        {(isRecalled || item.currentStock <= item.reorderPoint || daysUntilExpiry <= 90) && (
+                          <div className={`mb-4 p-3 border rounded-lg ${
+                            isRecalled ? 'bg-red-50 border-red-200' : 'bg-yellow-50 border-yellow-200'
+                          }`}>
                             <div className="flex items-center space-x-2 mb-2">
-                              <ApperIcon name="AlertTriangle" className="h-4 w-4 text-yellow-600" />
-                              <span className="text-sm font-medium text-yellow-800">Inventory Alerts</span>
+                              <ApperIcon name="AlertTriangle" className={`h-4 w-4 ${
+                                isRecalled ? 'text-red-600' : 'text-yellow-600'
+                              }`} />
+                              <span className={`text-sm font-medium ${
+                                isRecalled ? 'text-red-800' : 'text-yellow-800'
+                              }`}>
+                                {isRecalled ? 'FDA RECALL ALERT' : 'Inventory Alerts'}
+                              </span>
                             </div>
+                            {isRecalled && (
+                              <div className="text-sm text-red-700 font-semibold mb-1">
+                                🚨 This batch is subject to FDA recall - immediate action required
+                              </div>
+                            )}
                             {item.currentStock <= item.reorderPoint && (
                               <div className="text-sm text-yellow-700 mb-1">
                                 Stock level is at or below reorder point
@@ -664,7 +870,7 @@ const tabs = [
                               <div className="text-sm text-yellow-700">
                                 Item expires in {daysUntilExpiry} days
                               </div>
-)}
+                            )}
                             {daysUntilExpiry <= 0 && (
                               <div className="text-sm text-red-700 font-semibold">
                                 ⚠️ Item has expired - immediate disposal required
@@ -680,11 +886,12 @@ const tabs = [
                           onClick={() => {
                             const newStock = prompt("Enter new stock quantity:", item.currentStock)
                             if (newStock && !isNaN(newStock)) {
-                              handleUpdateStock(item.Id, parseInt(newStock))
+                              handleUpdateStock(item.Id, parseInt(newStock), item.lotNumber)
                             }
                           }}
                           variant="secondary"
                           size="sm"
+                          disabled={isRecalled}
                         >
                           <ApperIcon name="Edit" size={16} className="mr-2" />
                           Update Stock
@@ -697,11 +904,13 @@ const tabs = [
                           }}
                           variant="secondary"
                           size="sm"
+                          disabled={isRecalled}
                         >
                           <ApperIcon name="RefreshCw" size={16} className="mr-2" />
                           Set Reorder
                         </Button>
-{daysUntilExpiry < 0 ? (
+                        
+                        {(daysUntilExpiry < 0 || isRecalled) ? (
                           <Button
                             onClick={() => handleDisposeMedication(item)}
                             variant="error"
@@ -709,7 +918,7 @@ const tabs = [
                             className="bg-red-600 hover:bg-red-700"
                           >
                             <ApperIcon name="Trash2" size={16} className="mr-2" />
-                            Dispose
+                            {isRecalled ? "Recall Disposal" : "Dispose"}
                           </Button>
                         ) : item.currentStock <= item.reorderPoint && (
                           <Button
@@ -734,15 +943,45 @@ const tabs = [
             </div>
           )}
         </>
-      ) : (
+) : (
         <>
           <div className="flex justify-between items-center">
             <SearchBar
               value={searchTerm}
               onChange={setSearchTerm}
-              placeholder="Search prescriptions, patients, or medications..."
+              placeholder={activeTab === "inventory" || activeTab === "batch_tracking" 
+                ? "Search by name, NDC, manufacturer, or lot number..." 
+                : "Search prescriptions, patients, or medications..."}
               className="max-w-md"
             />
+            {activeTab === "inventory" && (
+              <div className="flex space-x-3">
+                <select
+                  value={inventoryFilter}
+                  onChange={(e) => setInventoryFilter(e.target.value)}
+                  className="input-field max-w-xs"
+                >
+                  <option value="all">All Items</option>
+                  <option value="low_stock">Low Stock</option>
+                  <option value="out_of_stock">Out of Stock</option>
+                  <option value="expiring">Expiring Soon</option>
+                  <option value="expired">Expired</option>
+                  <option value="recalled">Recalled Batches</option>
+                  <option value="batch_tracking">Tracked Batches</option>
+                </select>
+                <select
+                  value={inventorySort}
+                  onChange={(e) => setInventorySort(e.target.value)}
+                  className="input-field max-w-xs"
+                >
+                  <option value="name">Sort by Name</option>
+                  <option value="stock">Sort by Stock</option>
+                  <option value="expiry">Sort by Expiry</option>
+                  <option value="reorder">Sort by Reorder Need</option>
+                  <option value="lot">Sort by Lot Number</option>
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Content */}
@@ -961,13 +1200,13 @@ const tabs = [
         </div>
       )}
 
-      {/* Dispensing Modal */}
+{/* Dispensing Modal */}
       {showDispensingModal && selectedPrescription && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold">Medication Dispensing</h2>
+                <h2 className="text-xl font-semibold">Medication Dispensing with Batch Tracking</h2>
                 <button
                   onClick={() => setShowDispensingModal(false)}
                   className="text-gray-400 hover:text-gray-600"
@@ -1003,31 +1242,39 @@ const tabs = [
                   </div>
                 </div>
 
-                {/* Lot Number & Expiration */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="lotNumber">Lot Number</Label>
-                    <Input
-                      id="lotNumber"
-                      value={dispensingData.lotNumber}
-                      onChange={(e) => setDispensingData(prev => ({ ...prev, lotNumber: e.target.value }))}
-                      placeholder="Enter lot number"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="expirationDate">Expiration Date</Label>
-                    <Input
-                      id="expirationDate"
-                      type="date"
-                      value={dispensingData.expirationDate}
-                      onChange={(e) => setDispensingData(prev => ({ ...prev, expirationDate: e.target.value }))}
-                    />
+                {/* Batch Tracking Information */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h3 className="font-medium text-blue-800 mb-3">
+                    <ApperIcon name="Package2" size={16} className="inline mr-2" />
+                    Batch Tracking Requirements
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="lotNumber">Lot Number *</Label>
+                      <Input
+                        id="lotNumber"
+                        value={dispensingData.lotNumber}
+                        onChange={(e) => setDispensingData(prev => ({ ...prev, lotNumber: e.target.value }))}
+                        placeholder="Enter lot number"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="expirationDate">Expiration Date *</Label>
+                      <Input
+                        id="expirationDate"
+                        type="date"
+                        value={dispensingData.expirationDate}
+                        onChange={(e) => setDispensingData(prev => ({ ...prev, expirationDate: e.target.value }))}
+                        required
+                      />
+                    </div>
                   </div>
                 </div>
 
-                {/* Verification Checklist */}
+                {/* Enhanced Verification Checklist */}
                 <div>
-                  <h3 className="font-medium mb-3">Dispensing Checklist</h3>
+                  <h3 className="font-medium mb-3">Dispensing & Safety Checklist</h3>
                   <div className="space-y-2">
                     <label className="flex items-center space-x-2">
                       <input
@@ -1047,8 +1294,39 @@ const tabs = [
                       />
                       <span className="text-sm">Quantity counted and verified</span>
                     </label>
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={dispensingData.batchVerified}
+                        onChange={(e) => setDispensingData(prev => ({ ...prev, batchVerified: e.target.checked }))}
+                        className="rounded"
+                      />
+                      <span className="text-sm">Batch information verified (lot number & expiry)</span>
+                    </label>
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={dispensingData.recallChecked}
+                        onChange={(e) => setDispensingData(prev => ({ ...prev, recallChecked: e.target.checked }))}
+                        className="rounded"
+                      />
+                      <span className="text-sm">FDA recall database checked - no active recalls for this batch</span>
+                    </label>
                   </div>
                 </div>
+
+                {/* Recall Warning */}
+                {dispensingData.lotNumber && isRecalledBatch(dispensingData.lotNumber) && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <ApperIcon name="AlertTriangle" className="h-5 w-5 text-red-600" />
+                      <span className="font-medium text-red-800">FDA RECALL ALERT</span>
+                    </div>
+                    <p className="text-sm text-red-700">
+                      This lot number is subject to an active FDA recall. Dispensing is not permitted.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end space-x-3 mt-6">
@@ -1061,7 +1339,15 @@ const tabs = [
                 <Button
                   onClick={handleCompleteDispensing}
                   className="btn-primary"
-                  disabled={!dispensingData.barcodeScanned || !dispensingData.quantityVerified}
+                  disabled={
+                    !dispensingData.barcodeScanned || 
+                    !dispensingData.quantityVerified || 
+                    !dispensingData.batchVerified || 
+                    !dispensingData.recallChecked ||
+                    !dispensingData.lotNumber ||
+                    !dispensingData.expirationDate ||
+                    (dispensingData.lotNumber && isRecalledBatch(dispensingData.lotNumber))
+                  }
                 >
                   Complete Dispensing
                 </Button>
@@ -1211,10 +1497,93 @@ const tabs = [
                   Complete Counseling
                 </Button>
               </div>
-            </div>
+</div>
           </div>
         </div>
-)}
+      )}
+
+      {/* Recall Information Modal */}
+      {showRecallModal && selectedRecall && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-semibold text-red-700">
+                    <ApperIcon name="AlertTriangle" size={20} className="inline mr-2" />
+                    FDA Recall Details
+                  </h2>
+                  <button
+                    onClick={() => setShowRecallModal(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <ApperIcon name="X" size={20} />
+                  </button>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <h3 className="font-semibold mb-3">Recall Information</h3>
+                      <div className="space-y-2 text-sm">
+                        <div><span className="font-medium">Drug Name:</span> {selectedRecall.drugName}</div>
+                        <div><span className="font-medium">Recall Type:</span> {selectedRecall.recallType}</div>
+                        <div><span className="font-medium">Risk Level:</span> {selectedRecall.riskLevel}</div>
+                        <div><span className="font-medium">Recall Date:</span> {new Date(selectedRecall.recallDate).toLocaleDateString()}</div>
+                        <div><span className="font-medium">FDA Number:</span> {selectedRecall.fdaNumber}</div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="font-semibold mb-3">Affected Batches</h3>
+                      <div className="bg-gray-50 p-3 rounded">
+                        {selectedRecall.affectedLots.map((lot, index) => (
+                          <div key={index} className="font-mono text-sm py-1">{lot}</div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="font-semibold mb-3">Recall Reason</h3>
+                    <p className="text-sm bg-red-50 p-3 rounded border border-red-200">
+                      {selectedRecall.reason}
+                    </p>
+                  </div>
+
+                  <div>
+                    <h3 className="font-semibold mb-3">Required Actions</h3>
+                    <div className="space-y-2">
+                      {selectedRecall.requiredActions?.map((action, index) => (
+                        <div key={index} className="flex items-center space-x-2">
+                          <ApperIcon name="CheckSquare" size={16} className="text-blue-600" />
+                          <span className="text-sm">{action}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 mt-6">
+                  <Button
+                    onClick={() => setShowRecallModal(false)}
+                    className="btn-secondary"
+                  >
+                    Close
+                  </Button>
+                  <Button
+                    onClick={() => handleRecallAction(selectedRecall, "notify_patients")}
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    <ApperIcon name="Users" size={16} className="mr-2" />
+                    Notify Affected Patients
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )}
 
       {/* Reorder Point Modal */}
       {showReorderModal && selectedDrug && (
@@ -1281,15 +1650,15 @@ const tabs = [
         </div>
 )}
 
-      {/* Disposal Modal */}
+{/* Enhanced Disposal Modal with Batch Tracking */}
       {showDisposalModal && selectedDrug && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-semibold text-red-700">
                   <ApperIcon name="AlertTriangle" size={20} className="inline mr-2" />
-                  Medication Disposal
+                  {isRecalledBatch(selectedDrug.lotNumber) ? "FDA Recall Disposal" : "Medication Disposal"}
                 </h2>
                 <button
                   onClick={() => setShowDisposalModal(false)}
@@ -1300,10 +1669,16 @@ const tabs = [
               </div>
 
               <div className="space-y-6">
-                {/* Drug Information */}
-                <div className="bg-red-50 border border-red-200 p-4 rounded-lg">
-                  <h3 className="font-medium text-red-800 mb-3">Expired Medication Details</h3>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
+                {/* Enhanced Drug Information with Batch Details */}
+                <div className={`p-4 rounded-lg border ${
+                  isRecalledBatch(selectedDrug.lotNumber) 
+                    ? 'bg-red-50 border-red-200' 
+                    : 'bg-red-50 border-red-200'
+                }`}>
+                  <h3 className="font-medium text-red-800 mb-3">
+                    {isRecalledBatch(selectedDrug.lotNumber) ? 'Recalled Medication Details' : 'Expired Medication Details'}
+                  </h3>
+                  <div className="grid grid-cols-3 gap-4 text-sm">
                     <div>
                       <span className="text-gray-600">Drug Name:</span>
                       <div className="font-medium">{selectedDrug.drugName}</div>
@@ -1313,14 +1688,24 @@ const tabs = [
                       <div className="font-medium">{selectedDrug.strength}</div>
                     </div>
                     <div>
+                      <span className="text-gray-600">NDC:</span>
+                      <div className="font-medium">{selectedDrug.ndc}</div>
+                    </div>
+                    <div>
                       <span className="text-gray-600">Lot Number:</span>
-                      <div className="font-medium">{selectedDrug.lotNumber}</div>
+                      <div className="font-medium font-mono bg-white px-2 py-1 rounded border">
+                        {selectedDrug.lotNumber || "N/A"}
+                      </div>
                     </div>
                     <div>
                       <span className="text-gray-600">Expiry Date:</span>
                       <div className="font-medium text-red-600">
                         {new Date(selectedDrug.expiryDate).toLocaleDateString()}
                       </div>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Manufacturer:</span>
+                      <div className="font-medium">{selectedDrug.manufacturer}</div>
                     </div>
                     <div>
                       <span className="text-gray-600">Current Stock:</span>
@@ -1330,10 +1715,26 @@ const tabs = [
                       <span className="text-gray-600">Location:</span>
                       <div className="font-medium">{selectedDrug.location}</div>
                     </div>
+                    <div>
+                      <span className="text-gray-600">Unit Cost:</span>
+                      <div className="font-medium">${selectedDrug.costPerUnit}</div>
+                    </div>
                   </div>
+                  
+                  {isRecalledBatch(selectedDrug.lotNumber) && (
+                    <div className="mt-4 p-3 bg-red-100 border border-red-300 rounded">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <ApperIcon name="AlertTriangle" className="h-4 w-4 text-red-600" />
+                        <span className="font-medium text-red-800">FDA RECALL NOTICE</span>
+                      </div>
+                      <p className="text-sm text-red-700">
+                        This batch is subject to an active FDA recall. Immediate disposal required with regulatory compliance documentation.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
-                {/* Disposal Information */}
+                {/* Enhanced Disposal Information */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="quantity">Quantity to Dispose *</Label>
@@ -1357,8 +1758,8 @@ const tabs = [
                       required
                     >
                       <option value="Expired medication">Expired medication</option>
+                      <option value="Recalled medication">Recalled medication</option>
                       <option value="Damaged/contaminated">Damaged/contaminated</option>
-                      <option value="Recalled by manufacturer">Recalled by manufacturer</option>
                       <option value="Patient return">Patient return</option>
                       <option value="Overstocked">Overstocked</option>
                     </select>
@@ -1412,23 +1813,58 @@ const tabs = [
                     onChange={(e) => setDisposalData(prev => ({ ...prev, complianceNotes: e.target.value }))}
                     className="input-field"
                     rows={3}
-                    placeholder="DEA Form 41 completion, regulatory requirements, etc."
+                    placeholder={isRecalledBatch(selectedDrug.lotNumber) 
+                      ? "FDA recall compliance, notification requirements, etc."
+                      : "DEA Form 41 completion, regulatory requirements, etc."
+                    }
                   />
                 </div>
 
-                {/* Regulatory Compliance Warning */}
-                <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+                {/* Enhanced Regulatory Compliance Warning */}
+                <div className={`p-4 rounded-lg border ${
+                  isRecalledBatch(selectedDrug.lotNumber)
+                    ? 'bg-red-50 border-red-200'
+                    : 'bg-yellow-50 border-yellow-200'
+                }`}>
                   <div className="flex items-start space-x-2">
-                    <ApperIcon name="AlertTriangle" className="h-5 w-5 text-yellow-600 mt-0.5" />
+                    <ApperIcon name="AlertTriangle" className={`h-5 w-5 mt-0.5 ${
+                      isRecalledBatch(selectedDrug.lotNumber) ? 'text-red-600' : 'text-yellow-600'
+                    }`} />
                     <div>
-                      <h4 className="text-sm font-medium text-yellow-800">Regulatory Compliance</h4>
-                      <div className="text-sm text-yellow-700 mt-1">
-                        • DEA Form 41 must be completed for controlled substances
-                        • Witness signature required for all disposals
-                        • Documentation must be retained for 2 years
-                        • High-value disposals may require supervisor approval
+                      <h4 className={`text-sm font-medium ${
+                        isRecalledBatch(selectedDrug.lotNumber) ? 'text-red-800' : 'text-yellow-800'
+                      }`}>
+                        {isRecalledBatch(selectedDrug.lotNumber) ? 'FDA Recall Compliance' : 'Regulatory Compliance'}
+                      </h4>
+                      <div className={`text-sm mt-1 ${
+                        isRecalledBatch(selectedDrug.lotNumber) ? 'text-red-700' : 'text-yellow-700'
+                      }`}>
+                        {isRecalledBatch(selectedDrug.lotNumber) ? (
+                          <>
+                            • FDA notification required within 24 hours
+                            • Patient notification and recall completion required
+                            • Complete batch tracking documentation mandatory
+                            • Disposal must follow FDA guidelines for recalled products
+                          </>
+                        ) : (
+                          <>
+                            • DEA Form 41 must be completed for controlled substances
+                            • Witness signature required for all disposals
+                            • Documentation must be retained for 2 years
+                            • High-value disposals may require supervisor approval
+                            • Batch tracking information must be recorded
+                          </>
+                        )}
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                {/* Cost Impact */}
+                <div className="bg-gray-50 border border-gray-200 p-4 rounded-lg">
+                  <h4 className="text-sm font-medium text-gray-800 mb-2">Financial Impact</h4>
+                  <div className="text-sm text-gray-600">
+                    Estimated cost write-off: ${(parseInt(disposalData.quantity) || 0) * selectedDrug.costPerUnit}
                   </div>
                 </div>
               </div>
@@ -1442,17 +1878,22 @@ const tabs = [
                 </Button>
                 <Button
                   onClick={handleCompleteDisposal}
-                  className="bg-red-600 hover:bg-red-700 text-white"
+                  className={`text-white ${
+                    isRecalledBatch(selectedDrug.lotNumber)
+                      ? 'bg-red-700 hover:bg-red-800'
+                      : 'bg-red-600 hover:bg-red-700'
+                  }`}
                   disabled={!disposalData.quantity || !disposalData.witness || !disposalData.disposedBy}
                 >
                   <ApperIcon name="Trash2" size={16} className="mr-2" />
-                  Complete Disposal
+                  {isRecalledBatch(selectedDrug.lotNumber) ? 'Complete Recall Disposal' : 'Complete Disposal'}
                 </Button>
               </div>
             </div>
           </div>
         </div>
-      )}
+    </div>
+)}
     </div>
   )
 }

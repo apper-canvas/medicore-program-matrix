@@ -1,3 +1,5 @@
+import React from "react";
+import Error from "@/components/ui/Error";
 class MedicationService {
   constructor() {
 this.medications = [
@@ -63,13 +65,116 @@ this.medications = [
       }
     ]
 
-    // Disposal tracking system
+    // Enhanced batch tracking and recall management system
+    this.batchTracker = [
+      {
+        Id: 1,
+        drugName: "Lisinopril",
+        lotNumber: "LOT123456",
+        batchId: "BATCH001",
+        receivedDate: "2024-01-10",
+        expiryDate: "2024-06-15",
+        currentStock: 5,
+        initialStock: 25,
+        dispensedCount: 20,
+        unit: "bottles",
+        status: "active"
+      },
+      {
+        Id: 2,
+        drugName: "Metformin",
+        lotNumber: "LOT789012",
+        batchId: "BATCH002",
+        receivedDate: "2024-02-01",
+        expiryDate: "2025-01-20",
+        currentStock: 45,
+        initialStock: 50,
+        dispensedCount: 5,
+        unit: "bottles",
+        status: "active"
+      },
+      {
+        Id: 3,
+        drugName: "Acetaminophen",
+        lotNumber: "LOT112233",
+        batchId: "BATCH003",
+        receivedDate: "2023-12-15",
+        expiryDate: "2024-02-28",
+        currentStock: 15,
+        initialStock: 30,
+        dispensedCount: 15,
+        unit: "bottles",
+        status: "expired"
+      },
+      {
+        Id: 4,
+        drugName: "Omeprazole",
+        lotNumber: "LOT445566",
+        batchId: "BATCH004",
+        receivedDate: "2023-11-20",
+        expiryDate: "2024-01-15",
+        currentStock: 22,
+        initialStock: 25,
+        dispensedCount: 3,
+        unit: "bottles",
+        status: "expired"
+      }
+    ]
+
+    // FDA Recall management system
+    this.recalls = [
+      {
+        Id: 1,
+        drugName: "Acetaminophen",
+        recallType: "Class II",
+        riskLevel: "Medium",
+        reason: "Potential contamination with foreign particles detected during quality control testing",
+        fdaNumber: "R2024-001",
+        recallDate: "2024-02-25",
+        affectedLots: ["LOT112233", "LOT112234", "LOT112235"],
+        manufacturer: "Pain Relief Corp",
+        status: "active",
+        requiredActions: [
+          "Quarantine all affected inventory immediately",
+          "Notify patients who received medications from affected lots",
+          "Complete FDA Form 3500A for adverse event reporting",
+          "Arrange for return/disposal of recalled products"
+        ],
+        patientsNotified: 0,
+        stockQuarantined: false,
+        createdDate: "2024-02-25T10:00:00Z"
+      },
+      {
+        Id: 2,
+        drugName: "Simvastatin",
+        recallType: "Class I",
+        riskLevel: "High",
+        reason: "Incorrect labeling - tablets may contain double the indicated strength",
+        fdaNumber: "R2024-002",
+        recallDate: "2024-03-01",
+        affectedLots: ["LOT901234"],
+        manufacturer: "Cardio Meds",
+        status: "resolved",
+        requiredActions: [
+          "Immediate cessation of distribution",
+          "Patient notification for dosage adjustment",
+          "Medical monitoring for affected patients",
+          "Complete inventory audit and disposal"
+        ],
+        patientsNotified: 12,
+        stockQuarantined: true,
+        createdDate: "2024-03-01T08:00:00Z"
+      }
+    ]
+
+    // Enhanced disposal tracking system with batch compliance
     this.disposalRecords = [
       {
         Id: 1,
         drugId: 3,
         drugName: "Amoxicillin",
         lotNumber: "LOT345678",
+        batchId: "BATCH005",
         quantity: 12,
         unit: "bottles",
         expiryDate: "2024-03-10",
@@ -80,12 +185,36 @@ this.medications = [
         disposedBy: "Pharmacist John Smith",
         complianceNotes: "DEA Form 41 completed and filed",
         location: "Shelf C-1",
-        costWriteOff: 219.00
+        costWriteOff: 219.00,
+        isRecallDisposal: false,
+        batchTrackingCompliant: true,
+        regulatoryFilings: ["DEA Form 41"]
+      },
+      {
+        Id: 2,
+        drugId: 6,
+        drugName: "Acetaminophen",
+        lotNumber: "LOT112233",
+        batchId: "BATCH003",
+        quantity: 15,
+        unit: "bottles",
+        expiryDate: "2024-02-28",
+        disposalDate: "2024-03-05",
+        disposalReason: "Recalled medication",
+        disposalMethod: "DEA approved incinerator",
+        witness: "Dr. Emily Rodriguez",
+        disposedBy: "Pharmacist John Smith",
+        complianceNotes: "FDA recall disposal - R2024-001 compliance completed",
+        location: "Shelf D-2",
+        costWriteOff: 127.50,
+        isRecallDisposal: true,
+        batchTrackingCompliant: true,
+        regulatoryFilings: ["FDA Form 3500A", "DEA Form 41"]
       }
     ]
   }
 
-  async getInventory() {
+async getInventory() {
     await new Promise(resolve => setTimeout(resolve, 800))
     
     const mockInventory = [
@@ -103,7 +232,10 @@ this.medications = [
         expiryDate: "2024-06-15",
         location: "Shelf A-1",
         lotNumber: "LOT123456",
-        costPerUnit: 15.50
+        batchId: "BATCH001",
+        costPerUnit: 15.50,
+        receivedDate: "2024-01-10",
+        batchStatus: "active"
       },
       {
         Id: 2,
@@ -119,7 +251,10 @@ this.medications = [
         expiryDate: "2025-01-20",
         location: "Shelf B-2",
         lotNumber: "LOT789012",
-        costPerUnit: 12.75
+        batchId: "BATCH002",
+        costPerUnit: 12.75,
+        receivedDate: "2024-02-01",
+        batchStatus: "active"
       },
       {
         Id: 3,
@@ -135,7 +270,10 @@ this.medications = [
         expiryDate: "2024-03-10",
         location: "Shelf C-1",
         lotNumber: "LOT345678",
-        costPerUnit: 18.25
+        batchId: "BATCH005",
+        costPerUnit: 18.25,
+        receivedDate: "2024-01-05",
+        batchStatus: "disposed"
       },
       {
         Id: 4,
@@ -151,7 +289,10 @@ this.medications = [
         expiryDate: "2024-04-30",
         location: "Shelf A-3",
         lotNumber: "LOT901234",
-        costPerUnit: 22.00
+        batchId: "BATCH006",
+        costPerUnit: 22.00,
+        receivedDate: "2024-01-15",
+        batchStatus: "recalled"
       },
       {
         Id: 5,
@@ -167,7 +308,10 @@ this.medications = [
         expiryDate: "2024-05-15",
         location: "Shelf B-1",
         lotNumber: "LOT567890",
-        costPerUnit: 9.75
+        batchId: "BATCH007",
+        costPerUnit: 9.75,
+        receivedDate: "2024-01-20",
+        batchStatus: "active"
       },
       {
         Id: 6,
@@ -183,7 +327,10 @@ this.medications = [
         expiryDate: "2024-02-28",
         location: "Shelf D-2",
         lotNumber: "LOT112233",
-        costPerUnit: 8.50
+        batchId: "BATCH003",
+        costPerUnit: 8.50,
+        receivedDate: "2023-12-15",
+        batchStatus: "recalled"
       },
       {
         Id: 7,
@@ -199,14 +346,17 @@ this.medications = [
         expiryDate: "2024-01-15",
         location: "Shelf E-1",
         lotNumber: "LOT445566",
-        costPerUnit: 16.75
+        batchId: "BATCH004",
+        costPerUnit: 16.75,
+        receivedDate: "2023-11-20",
+        batchStatus: "expired"
       }
     ]
     
     return mockInventory
   }
 
-  async getInventoryStats() {
+async getInventoryStats() {
     await new Promise(resolve => setTimeout(resolve, 500))
     
     const inventory = await this.getInventory()
@@ -221,26 +371,40 @@ this.medications = [
         return daysUntilExpiry <= 90 && daysUntilExpiry > 0
       }).length,
       expired: inventory.filter(item => new Date(item.expiryDate) < now).length,
-      totalValue: inventory.reduce((sum, item) => sum + (item.currentStock * item.costPerUnit), 0)
+      recalled: inventory.filter(item => item.batchStatus === "recalled").length,
+      totalValue: inventory.reduce((sum, item) => sum + (item.currentStock * item.costPerUnit), 0),
+      batchTracked: inventory.filter(item => item.lotNumber && item.batchId).length
     }
     
     return stats
   }
 
-  async updateStock(drugId, newStock) {
+async updateStock(drugId, newStock, lotNumber = null) {
     await new Promise(resolve => setTimeout(resolve, 500))
     
     if (!drugId || newStock < 0) {
       throw new Error("Invalid drug ID or stock quantity")
     }
     
+    // Update batch tracker if lot number provided
+    if (lotNumber) {
+      const batchIndex = this.batchTracker.findIndex(batch => batch.lotNumber === lotNumber)
+      if (batchIndex !== -1) {
+        const oldStock = this.batchTracker[batchIndex].currentStock
+        this.batchTracker[batchIndex].currentStock = newStock
+        this.batchTracker[batchIndex].dispensedCount += (oldStock - newStock)
+        this.batchTracker[batchIndex].lastUpdated = new Date().toISOString()
+      }
+    }
+    
     return {
       success: true,
-      message: "Stock updated successfully"
+      message: "Stock updated successfully with batch tracking",
+      batchTracked: !!lotNumber
     }
   }
 
-  async setReorderPoint(drugId, reorderPoint) {
+async setReorderPoint(drugId, reorderPoint) {
     await new Promise(resolve => setTimeout(resolve, 500))
     
     if (!drugId || reorderPoint < 0) {
@@ -249,7 +413,7 @@ this.medications = [
     
     return {
       success: true,
-      message: "Reorder point updated successfully"
+      message: "Reorder point updated successfully with batch tracking"
     }
   }
 
@@ -285,7 +449,7 @@ this.medications = [
   }
 
   // Dispose expired medication
-  async disposeMedication(drugId, disposalData) {
+async disposeMedication(drugId, disposalData) {
     await new Promise(resolve => setTimeout(resolve, 800))
     
     if (!drugId || !disposalData) {
@@ -300,12 +464,13 @@ this.medications = [
       }
     }
 
-    // Generate disposal record
+    // Enhanced disposal record with batch tracking
     const disposalRecord = {
       Id: Date.now() + Math.random(),
       drugId,
       drugName: disposalData.drugName,
       lotNumber: disposalData.lotNumber,
+      batchId: disposalData.batchId,
       quantity: disposalData.quantity,
       unit: disposalData.unit,
       expiryDate: disposalData.expiryDate,
@@ -317,11 +482,35 @@ this.medications = [
       complianceNotes: disposalData.complianceNotes || "",
       location: disposalData.location,
       costWriteOff: disposalData.quantity * disposalData.costPerUnit,
+      isRecallDisposal: disposalData.isRecallDisposal || false,
+      batchTrackingCompliant: !!(disposalData.lotNumber && disposalData.batchId),
+      regulatoryFilings: [],
       regulatoryCompliance: {
         deaFormRequired: disposalData.disposalMethod === "DEA approved incinerator",
+        fdaNotificationRequired: disposalData.isRecallDisposal,
         witnessRequired: true,
         documentationComplete: true,
-        approvalRequired: disposalData.quantity * disposalData.costPerUnit > 500
+        approvalRequired: disposalData.quantity * disposalData.costPerUnit > 500,
+        batchTrackingRequired: true
+      }
+    }
+
+    // Add appropriate regulatory filings
+    if (disposalRecord.regulatoryCompliance.deaFormRequired) {
+      disposalRecord.regulatoryFilings.push("DEA Form 41")
+    }
+    
+    if (disposalRecord.regulatoryCompliance.fdaNotificationRequired) {
+      disposalRecord.regulatoryFilings.push("FDA Form 3500A")
+    }
+
+    // Update batch tracker
+    if (disposalData.lotNumber) {
+      const batchIndex = this.batchTracker.findIndex(batch => batch.lotNumber === disposalData.lotNumber)
+      if (batchIndex !== -1) {
+        this.batchTracker[batchIndex].currentStock -= disposalData.quantity
+        this.batchTracker[batchIndex].status = "disposed"
+        this.batchTracker[batchIndex].disposalDate = new Date().toISOString()
       }
     }
 
@@ -330,20 +519,122 @@ this.medications = [
 
     return {
       success: true,
-      message: "Medication disposed successfully",
+      message: disposalData.isRecallDisposal 
+        ? "Recalled medication disposed successfully with FDA compliance"
+        : "Medication disposed successfully with batch tracking",
       disposalRecord,
-      complianceStatus: "Complete"
+      complianceStatus: "Complete",
+      batchTracked: disposalRecord.batchTrackingCompliant,
+      regulatoryFilings: disposalRecord.regulatoryFilings
     }
   }
 
-  // Get disposal history
+// Get disposal history with batch tracking
   async getDisposalHistory() {
     await new Promise(resolve => setTimeout(resolve, 500))
     
     return this.disposalRecords.sort((a, b) => new Date(b.disposalDate) - new Date(a.disposalDate))
   }
 
-  // Get disposal statistics
+  // Get batch tracking data
+  async getBatchTracker() {
+    await new Promise(resolve => setTimeout(resolve, 400))
+    
+    return this.batchTracker.sort((a, b) => new Date(b.receivedDate) - new Date(a.receivedDate))
+  }
+
+  // FDA Recall Management
+  async getActiveRecalls() {
+    await new Promise(resolve => setTimeout(resolve, 300))
+    
+    return this.recalls.filter(recall => recall.status === "active")
+  }
+
+  async getAllRecalls() {
+    await new Promise(resolve => setTimeout(resolve, 300))
+    
+    return this.recalls.sort((a, b) => new Date(b.recallDate) - new Date(a.recallDate))
+  }
+
+  async createRecallAlert(recallData) {
+    await new Promise(resolve => setTimeout(resolve, 600))
+    
+    const recall = {
+      Id: Date.now() + Math.random(),
+      drugName: recallData.drugName,
+      recallType: recallData.recallType,
+      riskLevel: recallData.riskLevel,
+      reason: recallData.reason,
+      fdaNumber: recallData.fdaNumber,
+      recallDate: recallData.recallDate,
+      affectedLots: recallData.affectedLots,
+      manufacturer: recallData.manufacturer,
+      status: "active",
+      requiredActions: recallData.requiredActions || [],
+      patientsNotified: 0,
+      stockQuarantined: false,
+      createdDate: new Date().toISOString()
+    }
+    
+    this.recalls.push(recall)
+    
+    return {
+      success: true,
+      message: "Recall alert created successfully",
+      recall
+    }
+  }
+
+  async notifyRecallPatients(recallId) {
+    await new Promise(resolve => setTimeout(resolve, 1200))
+    
+    const recall = this.recalls.find(r => r.Id === recallId)
+    if (!recall) {
+      throw new Error("Recall not found")
+    }
+    
+    // Simulate patient notification process
+    const affectedPatients = Math.floor(Math.random() * 50) + 10
+    recall.patientsNotified = affectedPatients
+    recall.lastUpdated = new Date().toISOString()
+    
+    return {
+      success: true,
+      message: `${affectedPatients} patients notified successfully`,
+      patientsNotified: affectedPatients
+    }
+  }
+
+  async quarantineRecalledStock(recallId) {
+    await new Promise(resolve => setTimeout(resolve, 800))
+    
+    const recall = this.recalls.find(r => r.Id === recallId)
+    if (!recall) {
+      throw new Error("Recall not found")
+    }
+    
+    // Update inventory status for affected lots
+    const inventory = await this.getInventory()
+    let quarantinedItems = 0
+    
+    inventory.forEach(item => {
+      if (recall.affectedLots.includes(item.lotNumber)) {
+        item.batchStatus = "quarantined"
+        quarantinedItems++
+      }
+    })
+    
+    recall.stockQuarantined = true
+    recall.lastUpdated = new Date().toISOString()
+    
+    return {
+      success: true,
+      message: `${quarantinedItems} inventory items quarantined`,
+      quarantinedItems
+    }
+  }
+
+// Enhanced disposal statistics with batch tracking
   async getDisposalStats() {
     await new Promise(resolve => setTimeout(resolve, 300))
     
@@ -359,6 +650,8 @@ this.medications = [
       thisMonthDisposals: thisMonthDisposals.length,
       totalCostWriteOff: this.disposalRecords.reduce((sum, record) => sum + record.costWriteOff, 0),
       thisMonthCostWriteOff: thisMonthDisposals.reduce((sum, record) => sum + record.costWriteOff, 0),
+      recallDisposals: this.disposalRecords.filter(record => record.isRecallDisposal).length,
+      batchTrackedDisposals: this.disposalRecords.filter(record => record.batchTrackingCompliant).length,
       disposalReasons: this.disposalRecords.reduce((acc, record) => {
         acc[record.disposalReason] = (acc[record.disposalReason] || 0) + 1
         return acc
@@ -366,11 +659,17 @@ this.medications = [
       disposalMethods: this.disposalRecords.reduce((acc, record) => {
         acc[record.disposalMethod] = (acc[record.disposalMethod] || 0) + 1
         return acc
+      }, {}),
+      regulatoryFilings: this.disposalRecords.reduce((acc, record) => {
+        record.regulatoryFilings?.forEach(filing => {
+          acc[filing] = (acc[filing] || 0) + 1
+        })
+        return acc
       }, {})
     }
   }
 
-  // Automated Alert System
+// Enhanced Automated Alert System with Batch Tracking
   async monitorInventoryAlerts() {
     await new Promise(resolve => setTimeout(resolve, 300))
     
@@ -386,11 +685,12 @@ this.medications = [
           priority: item.currentStock === 0 ? 'critical' : 'high',
           drugId: item.Id,
           drugName: item.drugName,
+          lotNumber: item.lotNumber,
           currentStock: item.currentStock,
           reorderPoint: item.reorderPoint,
           message: item.currentStock === 0 
-            ? `${item.drugName} is out of stock`
-            : `${item.drugName} is below reorder point (${item.currentStock}/${item.reorderPoint})`,
+            ? `${item.drugName} (Lot: ${item.lotNumber}) is out of stock`
+            : `${item.drugName} (Lot: ${item.lotNumber}) is below reorder point (${item.currentStock}/${item.reorderPoint})`,
           timestamp: new Date().toISOString(),
           location: item.location
         })
@@ -405,9 +705,10 @@ this.medications = [
           priority: daysUntilExpiry <= 7 ? 'critical' : 'medium',
           drugId: item.Id,
           drugName: item.drugName,
+          lotNumber: item.lotNumber,
           expiryDate: item.expiryDate,
           daysUntilExpiry,
-          message: `${item.drugName} expires in ${daysUntilExpiry} days`,
+          message: `${item.drugName} (Lot: ${item.lotNumber}) expires in ${daysUntilExpiry} days`,
           timestamp: new Date().toISOString()
         })
       }
@@ -420,12 +721,42 @@ this.medications = [
           priority: 'critical',
           drugId: item.Id,
           drugName: item.drugName,
+          lotNumber: item.lotNumber,
           expiryDate: item.expiryDate,
           daysExpired: Math.abs(daysUntilExpiry),
           currentStock: item.currentStock,
-          message: `${item.drugName} expired ${Math.abs(daysUntilExpiry)} days ago - disposal required`,
+          message: `${item.drugName} (Lot: ${item.lotNumber}) expired ${Math.abs(daysUntilExpiry)} days ago - disposal required`,
           timestamp: new Date().toISOString(),
           action: 'disposal_required'
+        })
+      }
+
+      // Recall alerts
+      if (item.batchStatus === "recalled") {
+        alerts.push({
+          Id: `recall_${item.Id}`,
+          type: 'recall',
+          priority: 'critical',
+          drugId: item.Id,
+          drugName: item.drugName,
+          lotNumber: item.lotNumber,
+          message: `${item.drugName} (Lot: ${item.lotNumber}) is subject to FDA recall - immediate action required`,
+          timestamp: new Date().toISOString(),
+          action: 'recall_compliance_required'
+        })
+      }
+
+      // Batch tracking alerts
+      if (!item.lotNumber || !item.batchId) {
+        alerts.push({
+          Id: `batch_${item.Id}`,
+          type: 'batch_tracking',
+          priority: 'medium',
+          drugId: item.Id,
+          drugName: item.drugName,
+          message: `${item.drugName} missing batch tracking information`,
+          timestamp: new Date().toISOString(),
+          action: 'update_batch_info'
         })
       }
     })
@@ -593,10 +924,10 @@ this.medications = [
   }
 
   // Alert Notification System
-  async getActiveAlerts() {
+async getActiveAlerts() {
     const alerts = await this.monitorInventoryAlerts()
     
-    // Filter for active/unresolved alerts
+    // Filter for active/unresolved alerts with enhanced batch tracking
     return alerts.filter(alert => {
       if (alert.type === 'low_stock') {
         return alert.currentStock <= alert.reorderPoint
@@ -604,11 +935,17 @@ this.medications = [
       if (alert.type === 'expiring') {
         return alert.daysUntilExpiry <= 30
       }
+      if (alert.type === 'recall') {
+        return true // All recall alerts are active until resolved
+      }
+      if (alert.type === 'batch_tracking') {
+        return true // All batch tracking issues need resolution
+      }
       return true
     })
   }
 
-  async dismissAlert(alertId) {
+async dismissAlert(alertId) {
     await new Promise(resolve => setTimeout(resolve, 100))
     
     // In real system, would mark alert as dismissed in database
@@ -617,6 +954,58 @@ this.medications = [
       message: "Alert dismissed successfully"
     }
   }
+
+  // Batch tracking specific methods
+  async updateBatchInfo(drugId, batchData) {
+    await new Promise(resolve => setTimeout(resolve, 400))
+    
+    const batchIndex = this.batchTracker.findIndex(batch => batch.Id === drugId)
+    if (batchIndex !== -1) {
+      this.batchTracker[batchIndex] = {
+        ...this.batchTracker[batchIndex],
+        ...batchData,
+        lastUpdated: new Date().toISOString()
+      }
+    } else {
+      // Create new batch record
+      const newBatch = {
+        Id: Date.now() + Math.random(),
+        ...batchData,
+        createdDate: new Date().toISOString()
+      }
+      this.batchTracker.push(newBatch)
+    }
+    
+    return {
+      success: true,
+      message: "Batch information updated successfully"
+    }
+  }
+
+  async getBatchHistory(lotNumber) {
+    await new Promise(resolve => setTimeout(resolve, 300))
+    
+    const batch = this.batchTracker.find(b => b.lotNumber === lotNumber)
+    if (!batch) {
+      throw new Error("Batch not found")
+    }
+    
+    // Return batch history with all transactions
+    return {
+      batchInfo: batch,
+      disposalHistory: this.disposalRecords.filter(d => d.lotNumber === lotNumber),
+      recallHistory: this.recalls.filter(r => r.affectedLots.includes(lotNumber))
+    }
+  }
+
+  async searchBatchesByLot(lotNumber) {
+    await new Promise(resolve => setTimeout(resolve, 200))
+    
+    return this.batchTracker.filter(batch => 
+      batch.lotNumber.toLowerCase().includes(lotNumber.toLowerCase())
+    )
+  }
+}
 
   // Configuration Management
   async updateInventorySettings(settings) {
@@ -643,7 +1032,7 @@ this.medications = [
     return { ...defaultSettings, ...settings }
   }
 
-  async getAll() {
+async getAll() {
     await new Promise(resolve => setTimeout(resolve, 300))
     return [...this.medications]
   }
@@ -676,7 +1065,7 @@ this.medications = [
     return { ...newMedication }
   }
 
-  async update(id, medicationData) {
+async update(id, medicationData) {
     await new Promise(resolve => setTimeout(resolve, 400))
     
     const index = this.medications.findIndex(med => med.Id === parseInt(id))
