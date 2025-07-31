@@ -41,7 +41,12 @@ const [selectedCategory, setSelectedCategory] = useState("All")
   // Processing queue state
   const [processingQueue, setProcessingQueue] = useState([])
   const [queueStats, setQueueStats] = useState({})
-
+  // Quality control state
+  const [qcSamples, setQcSamples] = useState([])
+  const [calibrationSchedule, setCalibrationSchedule] = useState([])
+  const [calibrationReminders, setCalibrationReminders] = useState([])
+  const [showCalibrationModal, setShowCalibrationModal] = useState(false)
+  const [selectedCalibration, setSelectedCalibration] = useState(null)
 const tabs = [
     { id: "collection", label: "Sample Collection", icon: "TestTube" },
     { id: "tracking", label: "Specimen Tracking", icon: "Truck" },
@@ -250,6 +255,22 @@ const loadProcessingQueue = async () => {
     }
   }
 
+  const loadQualityControl = async () => {
+    try {
+      const [qcData, calSchedule, reminders] = await Promise.all([
+        laboratoryService.getQcSamples(),
+        laboratoryService.getCalibrationSchedule(),
+        laboratoryService.getCalibrationReminders()
+      ])
+      setQcSamples(qcData)
+      setCalibrationSchedule(calSchedule)
+      setCalibrationReminders(reminders)
+    } catch (error) {
+      console.error('Error loading quality control data:', error)
+      toast.error('Failed to load quality control data')
+    }
+  }
+
   const handleSpecimenSelection = (specimenId, checked) => {
     setSelectedSpecimens(prev => 
       checked 
@@ -282,7 +303,7 @@ const loadProcessingQueue = async () => {
     }
   }
 
-  const handleBatchComplete = async () => {
+const handleBatchComplete = async () => {
     if (selectedSpecimens.length === 0) {
       toast.warning('Please select specimens to complete')
       return
@@ -295,6 +316,31 @@ const loadProcessingQueue = async () => {
     } catch (error) {
       console.error('Error loading batch results:', error)
       toast.error('Failed to load batch results')
+    }
+  }
+
+  const handleParameterResultChange = (specimenId, testId, paramIndex, value) => {
+    setBatchResults(prev => {
+      const updated = { ...prev }
+      const test = updated[specimenId].tests.find(t => t.testId === testId)
+      if (test && test.parameters[paramIndex]) {
+        test.parameters[paramIndex].result = value
+        test.parameters[paramIndex].flag = laboratoryService.validateResultFlag(
+          value, 
+          test.parameters[paramIndex]
+        )
+      }
+      return updated
+    })
+  }
+
+  const handleCalibrationPerform = async (calibrationId) => {
+    try {
+      setSelectedCalibration(calibrationId)
+      setShowCalibrationModal(true)
+    } catch (error) {
+      console.error('Error starting calibration:', error)
+      toast.error('Failed to start calibration')
     }
   }
 
@@ -318,9 +364,34 @@ const loadProcessingQueue = async () => {
     }
   }
 
-  const handleSaveBatchResults = async () => {
+const handleSaveBatchResults = async () => {
     try {
-      await laboratoryService.completeBatch(selectedSpecimens, batchResults)
+      // Update results with proper flagging before saving
+      const updatedResults = await laboratoryService.updateBatchResults(selectedSpecimens, batchResults)
+      await laboratoryService.completeBatch(selectedSpecimens, updatedResults)
+      
+      // Check for critical values
+      const criticalAlerts = []
+      for (const specimenId in updatedResults) {
+        for (const test of updatedResults[specimenId].tests) {
+          for (const param of test.parameters) {
+            if (param.flag.includes('Critical')) {
+              criticalAlerts.push({
+                specimenId,
+                testName: test.testName,
+                parameter: param.name,
+                value: param.result,
+                flag: param.flag
+              })
+            }
+          }
+        }
+      }
+
+      if (criticalAlerts.length > 0) {
+        toast.warning(`${criticalAlerts.length} critical values detected! Please review immediately.`)
+      }
+
       toast.success(`Completed processing for ${selectedSpecimens.length} specimens`)
       setShowBatchResults(false)
       setBatchResults({})
@@ -342,572 +413,675 @@ const loadProcessingQueue = async () => {
     return matchesSearch && matchesStatus
   })
   if (loading) return <Loading />
+useEffect(() => {
+    if (activeTab === "processing") {
+      loadProcessingQueue()
+    } else if (activeTab === "quality-control") {
+      loadQualityControl()
+    }
+  }, [activeTab])
+
   if (error) return <Error message={error} onRetry={loadData} />
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Laboratory Management</h1>
-          <p className="text-gray-600 mt-1">Manage lab orders, test catalog, and results</p>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center space-x-2 py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === tab.id
-                  ? "border-primary-500 text-primary-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              }`}
-            >
-              <ApperIcon name={tab.icon} size={16} />
-              <span>{tab.label}</span>
-            </button>
-          ))}
-        </nav>
-      </div>
-
-{/* Sample Collection Tab */}
-      {activeTab === "collection" && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">Sample Collection Workflow</h2>
-            <div className="flex items-center space-x-4">
-              <Input
-                placeholder="Search orders or patients..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-64"
-              />
-              <select
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-              >
-                {statusFilters.map(status => (
-                  <option key={status} value={status}>{status}</option>
-                ))}
-              </select>
+<div className="space-y-6">
+    {/* Quality Control Reminders Banner */}
+    {calibrationReminders.length > 0 && <Card className="border-l-4 border-l-yellow-500 bg-yellow-50">
+        <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+                <ApperIcon name="AlertTriangle" size={20} className="text-yellow-600" />
+                <div>
+                    <h3 className="font-semibold text-yellow-800">Calibration Reminders</h3>
+                    <p className="text-sm text-yellow-700">
+                        {calibrationReminders.length}calibration(s) due within 24 hours
+                                        </p>
+                </div>
             </div>
-          </div>
-
-          <Card>
-            <div className="space-y-4">
-              {filteredOrders.length === 0 ? (
-                <div className="text-center py-8">
-                  <ApperIcon name="TestTube" className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">No pending collections found</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Order ID
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Patient Info
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Tests Ordered
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Collection Requirements
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Priority
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Status
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredOrders.map((order) => {
-                        const patient = patients.find(p => p.Id === order.patientId)
-                        return (
-                          <tr key={order.Id}>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                              #{order.Id}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-900">
-                              <div>
-                                <div className="font-medium">
-                                  {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
-                                </div>
-                                <div className="text-gray-500">
-                                  DOB: {patient?.dateOfBirth || "N/A"} | 
-                                  ID: {patient?.patientId || "N/A"}
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-900">
-                              <div className="max-w-xs">
-                                {order.tests?.map(test => (
-                                  <div key={test.Id} className="mb-1">
-                                    <span className="font-medium">{test.name}</span>
-                                    <span className="text-gray-500 ml-2">({test.code})</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-900">
-                              <div className="space-y-1">
-                                {order.requirements?.specimenTypes?.map((type, idx) => (
-                                  <div key={idx}>
-                                    <Badge variant="info" className="text-xs mr-1">{type}</Badge>
-                                  </div>
-                                ))}
-                                {order.requirements?.fastingRequired && (
-                                  <div className="text-red-600 text-xs">
-                                    <ApperIcon name="Clock" size={12} className="inline mr-1" />
-                                    Fasting: {order.requirements.fastingHours}hrs
-                                  </div>
-                                )}
-                                {order.requirements?.specialInstructions && (
-                                  <div className="text-orange-600 text-xs">
-                                    {order.requirements.specialInstructions}
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <Badge variant={getPriorityColor(order.priority)}>
-                                {order.priority}
-                              </Badge>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <Badge variant={getStatusColor(order.collectionStatus)}>
-                                {order.collectionStatus}
-                              </Badge>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              <div className="flex space-x-2">
-                                {order.collectionStatus === "Pending" && (
-                                  <>
-                                    <Button 
-                                      size="sm" 
-                                      onClick={() => handleGenerateBarcode(order.Id)}
-                                      title="Generate Barcode"
-                                    >
-                                      <ApperIcon name="QrCode" size={16} />
-                                    </Button>
-                                    <Button 
-                                      size="sm" 
-                                      variant="success"
-                                      onClick={() => handleUpdateStatus(order.Id, "Collected")}
-                                      title="Mark as Collected"
-                                    >
-                                      <ApperIcon name="Check" size={16} />
-                                    </Button>
-                                  </>
-                                )}
-                                {order.collectionStatus === "Collected" && (
-                                  <Button 
-                                    size="sm" 
-                                    variant="info"
-                                    onClick={() => handleUpdateStatus(order.Id, "Received")}
-                                    title="Receive in Lab"
-                                  >
-                                    <ApperIcon name="Package" size={16} />
-                                  </Button>
-                                )}
-                                {(order.collectionStatus === "Collected" || order.collectionStatus === "Received") && (
-                                  <Button 
-                                    size="sm" 
-                                    variant="error"
-                                    onClick={() => setRejectionModal({ isOpen: true, specimenId: order.Id })}
-                                    title="Reject Specimen"
-                                  >
-                                    <ApperIcon name="X" size={16} />
-                                  </Button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* Specimen Tracking Tab */}
-      {activeTab === "tracking" && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">Specimen Tracking</h2>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="text-center">
-              <div className="text-2xl font-bold text-blue-600">
-                {orders.filter(o => o.collectionStatus === "Pending").length}
-              </div>
-              <div className="text-sm text-gray-600">Pending Collection</div>
-            </Card>
-            <Card className="text-center">
-              <div className="text-2xl font-bold text-green-600">
-                {orders.filter(o => o.collectionStatus === "Collected").length}
-              </div>
-              <div className="text-sm text-gray-600">Collected</div>
-            </Card>
-            <Card className="text-center">
-              <div className="text-2xl font-bold text-orange-600">
-                {orders.filter(o => o.collectionStatus === "Processing").length}
-              </div>
-              <div className="text-sm text-gray-600">In Processing</div>
-            </Card>
-            <Card className="text-center">
-              <div className="text-2xl font-bold text-red-600">
-                {orders.filter(o => o.collectionStatus === "Rejected").length}
-              </div>
-              <div className="text-sm text-gray-600">Rejected</div>
-            </Card>
-          </div>
-
-          <Card>
-            <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
-            <div className="space-y-3">
-              {orders.slice(0, 10).map(order => {
-                const patient = patients.find(p => p.Id === order.patientId)
-                return (
-                  <div key={order.Id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <div className="font-medium">
-                        Order #{order.Id} - {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        {order.tests?.length || 0} tests ordered
-                      </div>
-                    </div>
-                    <Badge variant={getStatusColor(order.collectionStatus)}>
-                      {order.collectionStatus}
-                    </Badge>
-                  </div>
-                )
-              })}
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* Lab Processing Tab */}
-{activeTab === "processing" && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">Lab Processing Queue</h2>
-            <Button onClick={loadProcessingQueue} variant="secondary">
-              <ApperIcon name="RefreshCw" size={16} />
-              Refresh Queue
-            </Button>
-          </div>
-
-          {/* Queue Statistics */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-red-100 rounded-lg">
-                  <ApperIcon name="Zap" size={20} className="text-red-600" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-red-600">{queueStats.stat || 0}</div>
-                  <div className="text-sm text-gray-600">STAT Tests</div>
-                </div>
-              </div>
-            </Card>
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-yellow-100 rounded-lg">
-                  <ApperIcon name="AlertTriangle" size={20} className="text-yellow-600" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-yellow-600">{queueStats.urgent || 0}</div>
-                  <div className="text-sm text-gray-600">Urgent Tests</div>
-                </div>
-              </div>
-            </Card>
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <ApperIcon name="Clock" size={20} className="text-green-600" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-green-600">{queueStats.routine || 0}</div>
-                  <div className="text-sm text-gray-600">Routine Tests</div>
-                </div>
-              </div>
-            </Card>
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <ApperIcon name="Timer" size={20} className="text-blue-600" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-blue-600">{queueStats.averageWaitTime || 0}h</div>
-                  <div className="text-sm text-gray-600">Avg. Processing</div>
-                </div>
-              </div>
-            </Card>
-          </div>
-          
-<Card>
-            <h3 className="text-lg font-semibold mb-4">Processing Queue - Organized by Urgency & Time</h3>
-            
-            {processingQueue.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <ApperIcon name="TestTube" size={48} className="mx-auto mb-4 opacity-50" />
-                <p>No tests in processing queue</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {processingQueue.map((order, index) => {
-                  const patient = patients.find(p => p.Id === order.patientId)
-                  const isProcessing = order.collectionStatus === "Processing"
-                  
-                  return (
-                    <div 
-                      key={order.Id} 
-                      className={`border rounded-lg p-4 transition-all duration-200 ${
-                        order.priority === 'STAT' ? 'border-red-200 bg-red-50' :
-                        order.priority === 'Urgent' ? 'border-yellow-200 bg-yellow-50' :
-                        'border-green-200 bg-green-50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <div className="flex items-center gap-2">
-                              <Badge variant={getPriorityColor(order.priority)}>
-                                <ApperIcon name={getPriorityIcon(order.priority)} size={12} />
-                                {order.priority}
-                              </Badge>
-                              <span className="text-sm text-gray-500">#{order.queuePosition || index + 1}</span>
-                            </div>
-                            <div className="text-sm text-gray-600">
-                              Est. {order.estimatedProcessingTime || 'N/A'}h processing
-                            </div>
-                          </div>
-                          
-                          <div className="font-medium mb-1">
-                            Order #{order.Id} - {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
-                          </div>
-                          
-                          <div className="text-sm text-gray-600 mb-2">
-                            Tests: {order.tests?.map(t => t.name).join(", ")}
-                          </div>
-                          
-                          <div className="flex items-center gap-4 text-xs text-gray-500">
-                            <span>Ordered: {new Date(order.orderDate).toLocaleDateString()}</span>
-                            {order.collectionTime && (
-                              <span>Collected: {new Date(order.collectionTime).toLocaleTimeString()}</span>
-                            )}
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                          {isProcessing ? (
-                            <div className="flex items-center gap-2">
-                              <Badge variant="in-progress">
-                                <ApperIcon name="Activity" size={12} />
-                                Processing
-                              </Badge>
-                              <Button 
-                                onClick={() => handleUpdateStatus(order.Id, "Completed")}
-                                variant="success"
-                                size="sm"
-                              >
-                                Complete
-                              </Button>
-                            </div>
-                          ) : (
-                            <Button 
-                              onClick={() => {
-                                handleUpdateStatus(order.Id, "Processing")
-                                loadProcessingQueue()
-                              }}
-                              variant="primary"
-                              size="sm"
-                              className={
-                                order.priority === 'STAT' ? 'bg-red-600 hover:bg-red-700' :
-                                order.priority === 'Urgent' ? 'bg-yellow-600 hover:bg-yellow-700' :
-                                'bg-green-600 hover:bg-green-700'
-                              }
-                            >
-                              <ApperIcon name="Play" size={12} />
-                              Start Processing
+            <Button
+                onClick={() => setActiveTab("quality-control")}
+                variant="warning"
+                size="sm">View Details
                             </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </Card>
         </div>
-      )}
-
-      {/* Results Management Tab */}
-      {activeTab === "results" && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">Results Management</h2>
-          </div>
-          
-          <Card>
-            <h3 className="text-lg font-semibold mb-4">Completed Tests</h3>
-            <div className="space-y-4">
-              {orders.filter(o => o.collectionStatus === "Completed").map(order => {
-                const patient = patients.find(p => p.Id === order.patientId)
-                return (
-                  <div key={order.Id} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-medium">
-                          Order #{order.Id} - {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
-                        </div>
-                        <div className="text-sm text-gray-600">
-                          Tests: {order.tests?.map(t => t.name).join(", ")}
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge variant={getPriorityColor(order.priority)}>
-                            {order.priority}
-                          </Badge>
-                          <Badge variant="success">Completed</Badge>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="secondary" size="sm">
-                          <ApperIcon name="FileText" size={14} />
-                          View Results
-                        </Button>
-                        <Button variant="primary" size="sm">
-                          <ApperIcon name="Send" size={14} />
-                          Send Report
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
+    </Card>}
+    <div className="space-y-6">
+        <div className="flex items-center justify-between">
+            <div>
+                <h1 className="text-3xl font-bold text-gray-900">Laboratory Management</h1>
+                <p className="text-gray-600 mt-1">Manage lab orders, test catalog, and results</p>
             </div>
-          </Card>
         </div>
-      )}
-
-      {/* Barcode Modal */}
-      {barcodeModal.isOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-96">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Specimen Barcode</h3>
-              <Button 
-                variant="ghost" 
-                onClick={() => setBarcodeModal({ isOpen: false, specimen: null })}
-              >
-                <ApperIcon name="X" size={16} />
-              </Button>
-            </div>
-            
-            {barcodeModal.specimen && (
-              <div className="text-center space-y-4">
-                <div className="border-2 border-dashed border-gray-300 p-4 rounded-lg">
-                  <div className="font-mono text-xl font-bold">
-                    {barcodeModal.specimen.barcode}
-                  </div>
-                  <div className="text-xs text-gray-600 mt-2">
-                    ||||| {barcodeModal.specimen.barcode} |||||
-                  </div>
+        {/* Tabs */}
+        <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8">
+                {tabs.map(tab => <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center space-x-2 py-2 px-1 border-b-2 font-medium text-sm ${activeTab === tab.id ? "border-primary-500 text-primary-600" : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"}`}>
+                    <ApperIcon name={tab.icon} size={16} />
+                    <span>{tab.label}</span>
+                </button>)}
+            </nav>
+        </div>
+        {/* Sample Collection Tab */}
+        {activeTab === "collection" && <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-900">Sample Collection Workflow</h2>
+                <div className="flex items-center space-x-4">
+                    <Input
+                        placeholder="Search orders or patients..."
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        className="w-64" />
+                    <select
+                        value={selectedStatus}
+                        onChange={e => setSelectedStatus(e.target.value)}
+                        className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500">
+                        {statusFilters.map(status => <option key={status} value={status}>{status}</option>)}
+                    </select>
                 </div>
-                
-                <div className="text-left space-y-2">
-                  <div><strong>Patient:</strong> {barcodeModal.specimen.patientName}</div>
-                  <div><strong>Tests:</strong> {barcodeModal.specimen.tests}</div>
-                  <div><strong>Collection Date:</strong> {new Date().toLocaleDateString()}</div>
-                </div>
-                
-                <Button 
-                  onClick={() => handlePrintLabel(barcodeModal.specimen)}
-                  variant="primary"
-                  className="w-full"
-                >
-                  <ApperIcon name="Printer" size={16} className="mr-2" />
-                  Print Label
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+            </div>
+            <Card>
+                <div className="space-y-4">
+                    {filteredOrders.length === 0 ? <div className="text-center py-8">
+                        <ApperIcon name="TestTube" className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                        <p className="text-gray-500">No pending collections found</p>
+                    </div> : <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                                <tr>
+                                    <th
+                                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order ID
+                                                                </th>
+                                    <th
+                                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient Info
+                                                                </th>
+                                    <th
+                                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tests Ordered
+                                                                </th>
+                                    <th
+                                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Collection Requirements
+                                                                </th>
+                                    <th
+                                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority
+                                                                </th>
+                                    <th
+                                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status
+                                                                </th>
+                                    <th
+                                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions
+                                                                </th>
+                                </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                                {filteredOrders.map(order => {
+                                    const patient = patients.find(p => p.Id === order.patientId);
 
-      {/* Rejection Modal */}
-      {rejectionModal.isOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-96">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Reject Specimen</h3>
-              <Button 
-                variant="ghost" 
-                onClick={() => setRejectionModal({ isOpen: false, specimenId: null })}
-              >
-                <ApperIcon name="X" size={16} />
-              </Button>
+                                    return (
+                                        <tr key={order.Id}>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#{order.Id}
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-900">
+                                                <div>
+                                                    <div className="font-medium">
+                                                        {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
+                                                    </div>
+                                                    <div className="text-gray-500">DOB: {patient?.dateOfBirth || "N/A"}| 
+                                                                                          ID: {patient?.patientId || "N/A"}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-900">
+                                                <div className="max-w-xs">
+                                                    {order.tests?.map(test => <div key={test.Id} className="mb-1">
+                                                        <span className="font-medium">{test.name}</span>
+                                                        <span className="text-gray-500 ml-2">({test.code})</span>
+                                                    </div>)}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-900">
+                                                <div className="space-y-1">
+                                                    {order.requirements?.specimenTypes?.map((type, idx) => <div key={idx}>
+                                                        <Badge variant="info" className="text-xs mr-1">{type}</Badge>
+                                                    </div>)}
+                                                    {order.requirements?.fastingRequired && <div className="text-red-600 text-xs">
+                                                        <ApperIcon name="Clock" size={12} className="inline mr-1" />Fasting: {order.requirements.fastingHours}hrs
+                                                                                          </div>}
+                                                    {order.requirements?.specialInstructions && <div className="text-orange-600 text-xs">
+                                                        {order.requirements.specialInstructions}
+                                                    </div>}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <Badge variant={getPriorityColor(order.priority)}>
+                                                    {order.priority}
+                                                </Badge>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <Badge variant={getStatusColor(order.collectionStatus)}>
+                                                    {order.collectionStatus}
+                                                </Badge>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                <div className="flex space-x-2">
+                                                    {order.collectionStatus === "Pending" && <>
+                                                        <Button
+                                                            size="sm"
+                                                            onClick={() => handleGenerateBarcode(order.Id)}
+                                                            title="Generate Barcode">
+                                                            <ApperIcon name="QrCode" size={16} />
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="success"
+                                                            onClick={() => handleUpdateStatus(order.Id, "Collected")}
+                                                            title="Mark as Collected">
+                                                            <ApperIcon name="Check" size={16} />
+                                                        </Button>
+                                                    </>}
+                                                    {order.collectionStatus === "Collected" && <Button
+                                                        size="sm"
+                                                        variant="info"
+                                                        onClick={() => handleUpdateStatus(order.Id, "Received")}
+                                                        title="Receive in Lab">
+                                                        <ApperIcon name="Package" size={16} />
+                                                    </Button>}
+                                                    {(order.collectionStatus === "Collected" || order.collectionStatus === "Received") && <Button
+                                                        size="sm"
+                                                        variant="error"
+                                                        onClick={() => setRejectionModal({
+                                                            isOpen: true,
+                                                            specimenId: order.Id
+                                                        })}
+                                                        title="Reject Specimen">
+                                                        <ApperIcon name="X" size={16} />
+                                                    </Button>}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>}
+                </div>
+            </Card>
+        </div>}
+        {/* Specimen Tracking Tab */}
+        {activeTab === "tracking" && <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-900">Specimen Tracking</h2>
             </div>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Rejection Reason
-                </label>
-                <select
-                  value={rejectionReason}
-                  onChange={(e) => setRejectionReason(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                >
-                  <option value="">Select reason...</option>
-                  {rejectionReasons.map(reason => (
-                    <option key={reason} value={reason}>{reason}</option>
-                  ))}
-                </select>
-              </div>
-              
-              <div className="flex space-x-3">
-                <Button 
-                  variant="error"
-                  onClick={handleRejectSpecimen}
-                  disabled={!rejectionReason}
-                  className="flex-1"
-                >
-                  Reject & Reorder
-                </Button>
-                <Button 
-                  variant="ghost"
-                  onClick={() => setRejectionModal({ isOpen: false, specimenId: null })}
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">
+                        {orders.filter(o => o.collectionStatus === "Pending").length}
+                    </div>
+                    <div className="text-sm text-gray-600">Pending Collection</div>
+                </Card>
+                <Card className="text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                        {orders.filter(o => o.collectionStatus === "Collected").length}
+                    </div>
+                    <div className="text-sm text-gray-600">Collected</div>
+                </Card>
+                <Card className="text-center">
+                    <div className="text-2xl font-bold text-orange-600">
+                        {orders.filter(o => o.collectionStatus === "Processing").length}
+                    </div>
+                    <div className="text-sm text-gray-600">In Processing</div>
+                </Card>
+                <Card className="text-center">
+                    <div className="text-2xl font-bold text-red-600">
+                        {orders.filter(o => o.collectionStatus === "Rejected").length}
+                    </div>
+                    <div className="text-sm text-gray-600">Rejected</div>
+                </Card>
             </div>
-          </div>
-        </div>
-      )}
-    </div>
+            <Card>
+                <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
+                <div className="space-y-3">
+                    {orders.slice(0, 10).map(order => {
+                        const patient = patients.find(p => p.Id === order.patientId);
+
+                        return (
+                            <div
+                                key={order.Id}
+                                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                <div>
+                                    <div className="font-medium">Order #{order.Id}- {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
+                                    </div>
+                                    <div className="text-sm text-gray-600">
+                                        {order.tests?.length || 0}tests ordered
+                                                              </div>
+                                </div>
+                                <Badge variant={getStatusColor(order.collectionStatus)}>
+                                    {order.collectionStatus}
+                                </Badge>
+                            </div>
+                        );
+                    })}
+                </div>
+            </Card>
+        </div>}
+        {/* Lab Processing Tab */}
+        {activeTab === "processing" && <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-900">Lab Processing Queue</h2>
+                <Button onClick={loadProcessingQueue} variant="secondary">
+                    <ApperIcon name="RefreshCw" size={16} />Refresh Queue
+                                </Button>
+            </div>
+            {/* Queue Statistics */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card className="p-4">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-red-100 rounded-lg">
+                            <ApperIcon name="Zap" size={20} className="text-red-600" />
+                        </div>
+                        <div>
+                            <div className="text-2xl font-bold text-red-600">{queueStats.stat || 0}</div>
+                            <div className="text-sm text-gray-600">STAT Tests</div>
+                        </div>
+                    </div>
+                </Card>
+                <Card className="p-4">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-yellow-100 rounded-lg">
+                            <ApperIcon name="AlertTriangle" size={20} className="text-yellow-600" />
+                        </div>
+                        <div>
+                            <div className="text-2xl font-bold text-yellow-600">{queueStats.urgent || 0}</div>
+                            <div className="text-sm text-gray-600">Urgent Tests</div>
+                        </div>
+                    </div>
+                </Card>
+                <Card className="p-4">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-green-100 rounded-lg">
+                            <ApperIcon name="Clock" size={20} className="text-green-600" />
+                        </div>
+                        <div>
+                            <div className="text-2xl font-bold text-green-600">{queueStats.routine || 0}</div>
+                            <div className="text-sm text-gray-600">Routine Tests</div>
+                        </div>
+                    </div>
+                </Card>
+                <Card className="p-4">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-100 rounded-lg">
+                            <ApperIcon name="Timer" size={20} className="text-blue-600" />
+                        </div>
+                        <div>
+                            <div className="text-2xl font-bold text-blue-600">{queueStats.averageWaitTime || 0}h</div>
+                            <div className="text-sm text-gray-600">Avg. Processing</div>
+                        </div>
+                    </div>
+                </Card>
+            </div>
+            <Card>
+                <h3 className="text-lg font-semibold mb-4">Processing Queue - Organized by Urgency & Time</h3>
+                {processingQueue.length === 0 ? <div className="text-center py-8 text-gray-500">
+                    <ApperIcon name="TestTube" size={48} className="mx-auto mb-4 opacity-50" />
+                    <p>No tests in processing queue</p>
+                </div> : <div className="space-y-3">
+                    {processingQueue.map((order, index) => {
+                        const patient = patients.find(p => p.Id === order.patientId);
+                        const isProcessing = order.collectionStatus === "Processing";
+
+                        return (
+                            <div
+                                key={order.Id}
+                                className={`border rounded-lg p-4 transition-all duration-200 ${order.priority === "STAT" ? "border-red-200 bg-red-50" : order.priority === "Urgent" ? "border-yellow-200 bg-yellow-50" : "border-green-200 bg-green-50"}`}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <Badge variant={getPriorityColor(order.priority)}>
+                                                    <ApperIcon name={getPriorityIcon(order.priority)} size={12} />
+                                                    {order.priority}
+                                                </Badge>
+                                                <span className="text-sm text-gray-500">#{order.queuePosition || index + 1}</span>
+                                            </div>
+                                            <div className="text-sm text-gray-600">Est. {order.estimatedProcessingTime || "N/A"}h processing
+                                                                            </div>
+                                        </div>
+                                        <div className="font-medium mb-1">Order #{order.Id}- {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
+                                        </div>
+                                        <div className="text-sm text-gray-600 mb-2">Tests: {order.tests?.map(t => t.name).join(", ")}
+                                        </div>
+                                        <div className="flex items-center gap-4 text-xs text-gray-500">
+                                            <span>Ordered: {new Date(order.orderDate).toLocaleDateString()}</span>
+                                            {order.collectionTime && <span>Collected: {new Date(order.collectionTime).toLocaleTimeString()}</span>}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {isProcessing ? <div className="flex items-center gap-2">
+                                            <Badge variant="in-progress">
+                                                <ApperIcon name="Activity" size={12} />Processing
+                                                                              </Badge>
+                                            <Button
+                                                onClick={() => handleUpdateStatus(order.Id, "Completed")}
+                                                variant="success"
+                                                size="sm">Complete
+                                                                              </Button>
+                                        </div> : <Button
+                                            onClick={() => {
+                                                handleUpdateStatus(order.Id, "Processing");
+                                                loadProcessingQueue();
+                                            }}
+                                            variant="primary"
+                                            size="sm"
+                                            className={order.priority === "STAT" ? "bg-red-600 hover:bg-red-700" : order.priority === "Urgent" ? "bg-yellow-600 hover:bg-yellow-700" : "bg-green-600 hover:bg-green-700"}>
+                                            <ApperIcon name="Play" size={12} />Start Processing
+                                                                        </Button>}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>}
+            </Card>
+        </div>}
+        {/* Quality Control Tab */}
+        {activeTab === "quality-control" && <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-900">Quality Control & Calibration</h2>
+                <Button onClick={loadQualityControl} variant="secondary">
+                    <ApperIcon name="RefreshCw" size={16} />Refresh QC
+                                </Button>
+            </div>
+            {/* Calibration Reminders */}
+            {calibrationReminders.length > 0 && <Card className="border-l-4 border-l-red-500">
+                <h3 className="text-lg font-semibold text-red-800 mb-4">
+                    <ApperIcon name="AlertTriangle" size={20} className="inline mr-2" />Calibration Reminders
+                                  </h3>
+                <div className="space-y-3">
+                    {calibrationReminders.map(reminder => <div
+                        key={reminder.Id}
+                        className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+                        <div className="flex-1">
+                            <div className="font-medium text-red-900">{reminder.equipment}</div>
+                            <div className="text-sm text-red-700">
+                                {reminder.calibrationType}- {reminder.testCodes.join(", ")}
+                            </div>
+                            <div className="text-xs text-red-600">
+                                {reminder.status === "Overdue" ? `Overdue by ${Math.abs(reminder.hoursUntilDue)} hours` : `Due in ${reminder.hoursUntilDue} hours`}
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Badge variant={reminder.urgency === "Critical" ? "error" : "warning"}>
+                                {reminder.urgency}
+                            </Badge>
+                            <Button
+                                onClick={() => handleCalibrationPerform(reminder.Id)}
+                                variant={reminder.urgency === "Critical" ? "error" : "warning"}
+                                size="sm">Calibrate Now
+                                                      </Button>
+                        </div>
+                    </div>)}
+                </div>
+            </Card>}
+            {/* QC Samples Status */}
+            <Card>
+                <h3 className="text-lg font-semibold mb-4">Quality Control Samples</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {qcSamples.map(sample => <div key={sample.Id} className="border rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-2">
+                            <h4 className="font-medium">{sample.name}</h4>
+                            <Badge variant={sample.status === "Active" ? "success" : "warning"}>
+                                {sample.status}
+                            </Badge>
+                        </div>
+                        <div className="text-sm text-gray-600 space-y-1">
+                            <div>Type: {sample.type}</div>
+                            <div>Lot: {sample.lotNumber}</div>
+                            <div>Expires: {new Date(sample.expiryDate).toLocaleDateString()}</div>
+                            <div>Last Run: {new Date(sample.lastRun).toLocaleDateString()}</div>
+                            <div>Frequency: {sample.frequency}</div>
+                        </div>
+                    </div>)}
+                </div>
+            </Card>
+            {/* Calibration Schedule */}
+            <Card>
+                <h3 className="text-lg font-semibold mb-4">Calibration Schedule</h3>
+                <div className="overflow-x-auto">
+                    <table className="w-full">
+                        <thead>
+                            <tr className="border-b">
+                                <th className="text-left p-3">Equipment</th>
+                                <th className="text-left p-3">Tests</th>
+                                <th className="text-left p-3">Last Calibration</th>
+                                <th className="text-left p-3">Next Due</th>
+                                <th className="text-left p-3">Status</th>
+                                <th className="text-left p-3">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {calibrationSchedule.map(cal => <tr key={cal.Id} className="border-b">
+                                <td className="p-3">
+                                    <div className="font-medium">{cal.equipment}</div>
+                                    <div className="text-sm text-gray-600">{cal.calibrationType}</div>
+                                </td>
+                                <td className="p-3 text-sm">{cal.testCodes.join(", ")}</td>
+                                <td className="p-3 text-sm">
+                                    {new Date(cal.lastCalibration).toLocaleDateString()}
+                                </td>
+                                <td className="p-3 text-sm">
+                                    {new Date(cal.nextDue).toLocaleDateString()}
+                                </td>
+                                <td className="p-3">
+                                    <Badge
+                                        variant={cal.status === "Overdue" ? "error" : cal.status === "Due Soon" ? "warning" : "success"}>
+                                        {cal.status}
+                                    </Badge>
+                                </td>
+                                <td className="p-3">
+                                    <Button
+                                        onClick={() => handleCalibrationPerform(cal.Id)}
+                                        variant="secondary"
+                                        size="sm">Calibrate
+                                                                </Button>
+                                </td>
+                            </tr>)}
+                        </tbody>
+                    </table>
+                </div>
+            </Card>
+        </div>}
+        {/* Results Management Tab */}
+        {activeTab === "results" && <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-gray-900">Results Management</h2>
+            </div>
+            <Card>
+                <h3 className="text-lg font-semibold mb-4">Completed Tests</h3>
+                <div className="space-y-4">
+                    {orders.filter(o => o.collectionStatus === "Completed").map(order => {
+                        const patient = patients.find(p => p.Id === order.patientId);
+
+                        return (
+                            <div key={order.Id} className="border rounded-lg p-4">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="font-medium">Order #{order.Id}- {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
+                                        </div>
+                                        <div className="text-sm text-gray-600">Tests: {order.tests?.map(t => t.name).join(", ")}
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <Badge variant={getPriorityColor(order.priority)}>
+                                                {order.priority}
+                                            </Badge>
+                                            <Badge variant="success">Completed</Badge>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Button variant="secondary" size="sm">
+                                            <ApperIcon name="FileText" size={14} />View Results
+                                                                    </Button>
+                                        <Button variant="primary" size="sm">
+                                            <ApperIcon name="Send" size={14} />Send Report
+                                                                    </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </Card>
+        </div>}
+        {/* Enhanced Batch Results Modal */}
+        {showBatchResults && <div
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div
+                className="bg-white rounded-lg p-6 w-full max-w-6xl max-h-[90vh] overflow-auto">
+                <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-semibold">Result Entry - {selectedSpecimens.length}Specimens</h3>
+                    <Button variant="ghost" onClick={() => setShowBatchResults(false)}>
+                        <ApperIcon name="X" size={16} />
+                    </Button>
+                </div>
+                <div className="space-y-6">
+                    {Object.entries(batchResults).map(([specimenId, results]) => <Card key={specimenId} className="p-4">
+                        <h4 className="font-semibold mb-4">Specimen #{specimenId}- Order #{results.orderId}</h4>
+                        {results.tests.map(test => <div key={test.testId} className="mb-6 last:mb-0">
+                            <div className="flex items-center gap-2 mb-3">
+                                <h5 className="font-medium">{test.testName}</h5>
+                                <Badge
+                                    variant={test.overallFlag === "Critical" ? "error" : test.overallFlag === "Abnormal" ? "warning" : "success"}>
+                                    {test.overallFlag}
+                                </Badge>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {test.parameters.map(
+                                    (param, paramIndex) => <div key={paramIndex} className="border rounded-lg p-3">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <Label className="text-sm font-medium">{param.name}</Label>
+                                            <Badge
+                                                variant={param.flag.includes("Critical") ? "error" : param.flag === "High" || param.flag === "Low" ? "warning" : param.flag === "Normal" ? "success" : "default"}
+                                                size="sm">
+                                                {param.flag}
+                                            </Badge>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-2">
+                                                <Input
+                                                    type="text"
+                                                    value={param.result}
+                                                    onChange={e => handleParameterResultChange(specimenId, test.testId, paramIndex, e.target.value)}
+                                                    placeholder="Enter result"
+                                                    className={`text-sm ${param.flag.includes("Critical") ? "border-red-500 bg-red-50" : param.flag === "High" || param.flag === "Low" ? "border-yellow-500 bg-yellow-50" : "border-gray-300"}`} />
+                                                <span className="text-xs text-gray-600 whitespace-nowrap">
+                                                    {param.unit}
+                                                </span>
+                                            </div>
+                                            <div className="text-xs text-gray-600">
+                                                <div>Normal: {param.normalRange}</div>
+                                                {(param.criticalLow !== null || param.criticalHigh !== null) && <div className="text-red-600">Critical: {param.criticalLow !== null ? `<${param.criticalLow}` : ""}
+                                                    {param.criticalLow !== null && param.criticalHigh !== null ? " or " : ""}
+                                                    {param.criticalHigh !== null ? `>${param.criticalHigh}` : ""}
+                                                </div>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>)}
+                    </Card>)}
+                </div>
+                <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+                    <Button variant="ghost" onClick={() => setShowBatchResults(false)}>Cancel
+                                      </Button>
+                    <Button variant="primary" onClick={handleSaveBatchResults}>
+                        <ApperIcon name="Save" size={16} className="mr-2" />Save Results
+                                      </Button>
+                </div>
+            </div>
+        </div>}
+        {/* Barcode Modal */}
+        {barcodeModal.isOpen && <div
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-96">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold">Specimen Barcode</h3>
+                    <Button
+                        variant="ghost"
+                        onClick={() => setBarcodeModal({
+                            isOpen: false,
+                            specimen: null
+                        })}>
+                        <ApperIcon name="X" size={16} />
+                    </Button>
+                </div>
+                {barcodeModal.specimen && <div className="text-center space-y-4">
+                    <div className="border-2 border-dashed border-gray-300 p-4 rounded-lg">
+                        <div className="font-mono text-xl font-bold">
+                            {barcodeModal.specimen.barcode}
+                        </div>
+                        <div className="text-xs text-gray-600 mt-2">||||| {barcodeModal.specimen.barcode}|||||
+                                              </div>
+                    </div>
+                    <div className="text-left space-y-2">
+                        <div><strong>Patient:</strong> {barcodeModal.specimen.patientName}</div>
+                        <div><strong>Tests:</strong> {barcodeModal.specimen.tests}</div>
+                        <div><strong>Collection Date:</strong> {new Date().toLocaleDateString()}</div>
+                    </div>
+                    <Button
+                        onClick={() => handlePrintLabel(barcodeModal.specimen)}
+                        variant="primary"
+                        className="w-full">
+                        <ApperIcon name="Printer" size={16} className="mr-2" />Print Label
+                                        </Button>
+                </div>}
+            </div>
+        </div>}
+        {/* Rejection Modal */}
+        {rejectionModal.isOpen && <div
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-96">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold">Reject Specimen</h3>
+                    <Button
+                        variant="ghost"
+                        onClick={() => setRejectionModal({
+                            isOpen: false,
+                            specimenId: null
+                        })}>
+                        <ApperIcon name="X" size={16} />
+                    </Button>
+                </div>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Rejection Reason
+                                            </label>
+                        <select
+                            value={rejectionReason}
+                            onChange={e => setRejectionReason(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500">
+                            <option value="">Select reason...</option>
+                            {rejectionReasons.map(reason => <option key={reason} value={reason}>{reason}</option>)}
+                        </select>
+                    </div>
+                    <div className="flex space-x-3">
+                        <Button
+                            variant="error"
+                            onClick={handleRejectSpecimen}
+                            disabled={!rejectionReason}
+                            className="flex-1">Reject & Reorder
+                                            </Button>
+                        <Button
+                            variant="ghost"
+                            onClick={() => setRejectionModal({
+                                isOpen: false,
+                                specimenId: null
+                            })}
+                            className="flex-1">Cancel
+                                            </Button>
+                    </div>
+                </div>
+            </div>
+        </div>}
+    </div></div>
   )
 }
 

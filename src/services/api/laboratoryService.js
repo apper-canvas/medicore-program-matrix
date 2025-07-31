@@ -1,8 +1,6 @@
-import React from "react";
-import Error from "@/components/ui/Error";
 const labTestCatalog = [
   // Blood Tests
-  { 
+  {
     Id: 1, 
     name: "Complete Blood Count (CBC)", 
     code: "CBC",
@@ -13,7 +11,14 @@ const labTestCatalog = [
     fastingRequired: false,
     turnaroundTime: "2-4 hours",
     normalRange: "Various parameters",
-    price: 25.00
+    price: 25.00,
+    parameters: [
+      { name: "WBC", normalRange: "4.5-11.0", unit: "×10³/μL", criticalLow: 2.0, criticalHigh: 30.0 },
+      { name: "RBC", normalRange: "4.2-5.4", unit: "×10⁶/μL", criticalLow: 2.5, criticalHigh: 7.0 },
+      { name: "Hemoglobin", normalRange: "12.0-16.0", unit: "g/dL", criticalLow: 7.0, criticalHigh: 20.0 },
+      { name: "Hematocrit", normalRange: "36-46", unit: "%", criticalLow: 20, criticalHigh: 60 },
+      { name: "Platelets", normalRange: "150-450", unit: "×10³/μL", criticalLow: 50, criticalHigh: 1000 }
+    ]
   },
   { 
     Id: 2, 
@@ -27,7 +32,15 @@ const labTestCatalog = [
     fastingHours: 8,
     turnaroundTime: "1-2 hours",
     normalRange: "Various parameters",
-    price: 35.00
+    price: 35.00,
+    parameters: [
+      { name: "Glucose", normalRange: "70-100", unit: "mg/dL", criticalLow: 40, criticalHigh: 400 },
+      { name: "Sodium", normalRange: "136-145", unit: "mmol/L", criticalLow: 120, criticalHigh: 160 },
+      { name: "Potassium", normalRange: "3.5-5.1", unit: "mmol/L", criticalLow: 2.8, criticalHigh: 6.2 },
+      { name: "Chloride", normalRange: "98-107", unit: "mmol/L", criticalLow: 80, criticalHigh: 120 },
+      { name: "BUN", normalRange: "6-24", unit: "mg/dL", criticalLow: 2, criticalHigh: 80 },
+      { name: "Creatinine", normalRange: "0.6-1.3", unit: "mg/dL", criticalLow: 0.2, criticalHigh: 8.0 }
+    ]
   },
   { 
     Id: 3, 
@@ -41,7 +54,13 @@ const labTestCatalog = [
     fastingHours: 12,
     turnaroundTime: "2-4 hours",
     normalRange: "Various parameters",
-    price: 45.00
+    price: 45.00,
+    parameters: [
+      { name: "Total Cholesterol", normalRange: "<200", unit: "mg/dL", criticalLow: 50, criticalHigh: 500 },
+      { name: "HDL Cholesterol", normalRange: ">40", unit: "mg/dL", criticalLow: 10, criticalHigh: 150 },
+      { name: "LDL Cholesterol", normalRange: "<100", unit: "mg/dL", criticalLow: 20, criticalHigh: 400 },
+      { name: "Triglycerides", normalRange: "<150", unit: "mg/dL", criticalLow: 20, criticalHigh: 1000 }
+    ]
   },
   { 
     Id: 4, 
@@ -54,7 +73,12 @@ const labTestCatalog = [
     fastingRequired: false,
     turnaroundTime: "4-6 hours",
     normalRange: "Various parameters",
-    price: 55.00
+    price: 55.00,
+    parameters: [
+      { name: "TSH", normalRange: "0.4-4.0", unit: "mIU/L", criticalLow: 0.1, criticalHigh: 20.0 },
+      { name: "Free T4", normalRange: "0.8-1.8", unit: "ng/dL", criticalLow: 0.2, criticalHigh: 5.0 },
+      { name: "Free T3", normalRange: "2.3-4.2", unit: "pg/mL", criticalLow: 1.0, criticalHigh: 10.0 }
+    ]
   },
   { 
     Id: 5, 
@@ -68,7 +92,13 @@ const labTestCatalog = [
     fastingHours: 8,
     turnaroundTime: "2-4 hours",
     normalRange: "Various parameters",
-    price: 40.00
+    price: 40.00,
+    parameters: [
+      { name: "ALT", normalRange: "7-40", unit: "U/L", criticalLow: 0, criticalHigh: 1000 },
+      { name: "AST", normalRange: "10-40", unit: "U/L", criticalLow: 0, criticalHigh: 1000 },
+      { name: "Total Bilirubin", normalRange: "0.2-1.2", unit: "mg/dL", criticalLow: 0, criticalHigh: 20.0 },
+      { name: "Albumin", normalRange: "3.5-5.0", unit: "g/dL", criticalLow: 1.5, criticalHigh: 6.0 }
+    ]
   },
   
   // Urine Tests
@@ -83,7 +113,14 @@ const labTestCatalog = [
     fastingRequired: false,
     turnaroundTime: "1-2 hours",
     normalRange: "Various parameters",
-    price: 20.00
+    price: 20.00,
+    parameters: [
+      { name: "Specific Gravity", normalRange: "1.003-1.030", unit: "", criticalLow: 1.000, criticalHigh: 1.040 },
+      { name: "pH", normalRange: "4.6-8.0", unit: "", criticalLow: 3.0, criticalHigh: 9.0 },
+      { name: "Protein", normalRange: "Negative", unit: "", criticalLow: null, criticalHigh: null },
+      { name: "Glucose", normalRange: "Negative", unit: "", criticalLow: null, criticalHigh: null },
+      { name: "WBC", normalRange: "0-5", unit: "/hpf", criticalLow: null, criticalHigh: 50 }
+    ]
   },
   { 
     Id: 7, 
@@ -96,7 +133,10 @@ const labTestCatalog = [
     fastingRequired: false,
     turnaroundTime: "24-48 hours",
     normalRange: "No growth",
-    price: 30.00
+    price: 30.00,
+    parameters: [
+      { name: "Bacterial Count", normalRange: "<10,000", unit: "CFU/mL", criticalLow: null, criticalHigh: 100000 }
+    ]
   },
   { 
     Id: 8, 
@@ -109,7 +149,10 @@ const labTestCatalog = [
     fastingRequired: false,
     turnaroundTime: "4-6 hours",
     normalRange: "<150 mg/24h",
-    price: 35.00
+    price: 35.00,
+    parameters: [
+      { name: "Total Protein", normalRange: "<150", unit: "mg/24h", criticalLow: null, criticalHigh: 3000 }
+    ]
   },
   
   // Imaging
@@ -124,7 +167,8 @@ const labTestCatalog = [
     fastingRequired: false,
     turnaroundTime: "30 minutes",
     normalRange: "No acute findings",
-    price: 75.00
+    price: 75.00,
+    parameters: []
   },
   { 
     Id: 10, 
@@ -138,7 +182,8 @@ const labTestCatalog = [
     fastingHours: 8,
     turnaroundTime: "1 hour",
     normalRange: "Normal findings",
-    price: 150.00
+    price: 150.00,
+    parameters: []
   },
   { 
     Id: 11, 
@@ -151,7 +196,8 @@ const labTestCatalog = [
     fastingRequired: false,
     turnaroundTime: "2 hours",
     normalRange: "No acute findings",
-    price: 300.00
+    price: 300.00,
+    parameters: []
   },
   
   // Specialized Tests
@@ -166,7 +212,10 @@ const labTestCatalog = [
     fastingRequired: false,
     turnaroundTime: "2-4 hours",
     normalRange: "<5.7%",
-    price: 50.00
+    price: 50.00,
+    parameters: [
+      { name: "HbA1c", normalRange: "<5.7", unit: "%", criticalLow: 2.0, criticalHigh: 15.0 }
+    ]
   },
   { 
     Id: 13, 
@@ -179,7 +228,10 @@ const labTestCatalog = [
     fastingRequired: false,
     turnaroundTime: "1 hour",
     normalRange: "<0.04 ng/mL",
-    price: 60.00
+    price: 60.00,
+    parameters: [
+      { name: "Troponin I", normalRange: "<0.04", unit: "ng/mL", criticalLow: null, criticalHigh: 0.04 }
+    ]
   },
   { 
     Id: 14, 
@@ -192,7 +244,10 @@ const labTestCatalog = [
     fastingRequired: false,
     turnaroundTime: "4-6 hours",
     normalRange: "30-100 ng/mL",
-    price: 70.00
+    price: 70.00,
+    parameters: [
+      { name: "Vitamin D", normalRange: "30-100", unit: "ng/mL", criticalLow: 10, criticalHigh: 150 }
+    ]
   },
   { 
     Id: 15, 
@@ -205,17 +260,103 @@ const labTestCatalog = [
     fastingRequired: false,
     turnaroundTime: "4-6 hours",
     normalRange: "Not Detected",
-    price: 80.00
+    price: 80.00,
+    parameters: [
+      { name: "SARS-CoV-2", normalRange: "Not Detected", unit: "", criticalLow: null, criticalHigh: null }
+    ]
+  }
+];
+
+// Quality Control Samples
+const qcSamples = [
+  {
+    Id: 1,
+    name: "Normal Control Level 1",
+    type: "Normal",
+    lotNumber: "QC2024001",
+    expiryDate: "2024-12-31",
+    applicableTests: [1, 2, 3, 4, 5],
+    lastRun: "2024-01-15T08:00:00",
+    frequency: "Daily",
+    status: "Active"
+  },
+  {
+    Id: 2,
+    name: "Abnormal Control Level 2",
+    type: "Abnormal",
+    lotNumber: "QC2024002",
+    expiryDate: "2024-12-31",
+    applicableTests: [1, 2, 3, 4, 5],
+    lastRun: "2024-01-15T08:00:00",
+    frequency: "Daily",
+    status: "Active"
+  },
+  {
+    Id: 3,
+    name: "Chemistry Control High",
+    type: "High",
+    lotNumber: "QC2024003",
+    expiryDate: "2024-11-30",
+    applicableTests: [2, 3, 5],
+    lastRun: "2024-01-14T10:30:00",
+    frequency: "Every 8 hours",
+    status: "Expiring Soon"
+  }
+];
+
+// Calibration Schedule
+const calibrationSchedule = [
+  {
+    Id: 1,
+    equipment: "Hematology Analyzer HA-100",
+    testCodes: ["CBC"],
+    lastCalibration: "2024-01-10T09:00:00",
+    nextDue: "2024-01-17T09:00:00",
+    frequency: "Weekly",
+    status: "Due Soon",
+    calibrationType: "Full Calibration"
+  },
+  {
+    Id: 2,
+    equipment: "Chemistry Analyzer CA-200",
+    testCodes: ["BMP", "LIPID", "LFT"],
+    lastCalibration: "2024-01-12T14:00:00",
+    nextDue: "2024-01-19T14:00:00",
+    frequency: "Weekly",
+    status: "Current",
+    calibrationType: "Multi-point"
+  },
+  {
+    Id: 3,
+    equipment: "Immunoassay Analyzer IA-150",
+    testCodes: ["TFT", "HbA1C", "TnI", "VIT-D"],
+    lastCalibration: "2024-01-08T11:00:00",
+    nextDue: "2024-01-15T11:00:00",
+    frequency: "Weekly",
+    status: "Overdue",
+    calibrationType: "Automated"
+  },
+  {
+    Id: 4,
+    equipment: "PCR Analyzer PCR-300",
+    testCodes: ["COVID-PCR"],
+    lastCalibration: "2024-01-14T16:00:00",
+    nextDue: "2024-01-28T16:00:00",
+    frequency: "Bi-weekly",
+    status: "Current",
+    calibrationType: "Internal Standard"
+calibrationType: "Internal Standard"
   }
 ];
 
 const labOrders = [];
-
 class LaboratoryService {
   constructor() {
-this.tests = [...labTestCatalog];
+    this.tests = [...labTestCatalog];
     this.orders = [...labOrders];
     this.processingQueue = [];
+    this.qcSamples = [...qcSamples];
+    this.calibrationSchedule = [...calibrationSchedule];
   }
 
   // Test Catalog Methods
@@ -277,7 +418,6 @@ async createOrder(orderData) {
     
     // Generate new ID
     const maxId = Math.max(...this.orders.map(o => o.Id), 0);
-    
     // Get test details for the ordered tests
     const testsWithDetails = orderData.testIds.map(testId => {
       const test = this.tests.find(t => t.Id === testId);
@@ -442,7 +582,6 @@ async createOrder(orderData) {
       "Contaminated specimen"
     ];
   }
-
   async deleteOrder(id) {
     await new Promise(resolve => setTimeout(resolve, 300));
     const index = this.orders.findIndex(o => o.Id === parseInt(id));
@@ -573,11 +712,10 @@ async createOrder(orderData) {
       "10:00 - 11:00",
       "11:00 - 12:00",
       "14:00 - 15:00",
-      "15:00 - 16:00",
+"15:00 - 16:00",
       "16:00 - 17:00"
-];
+    ];
   }
-
   getWorkflowStatuses() {
     return [
       { status: "Pending", description: "Awaiting sample collection", color: "warning" },
@@ -585,9 +723,9 @@ async createOrder(orderData) {
       { status: "Received", description: "Received in laboratory", color: "info" },
       { status: "Processing", description: "Currently being analyzed", color: "processing" },
       { status: "Completed", description: "Results available", color: "success" },
-      { status: "Rejected", description: "Specimen rejected", color: "rejected" }
+{ status: "Rejected", description: "Specimen rejected", color: "rejected" }
     ];
-}
+  }
 
   // Batch Processing Methods
   async processBatch(specimenIds) {
@@ -695,29 +833,153 @@ async createOrder(orderData) {
     };
   }
 
-  async getBatchResults(specimenIds) {
+async getBatchResults(specimenIds) {
     await new Promise(resolve => setTimeout(resolve, 300));
     
     const results = {};
     for (const specimenId of specimenIds) {
       const order = this.orders.find(o => o.Id === parseInt(specimenId));
       if (order) {
-        // Generate template results for each test
+        // Generate template results for each test with parameters
         results[specimenId] = {
           orderId: order.Id,
-          tests: order.tests?.map(test => ({
-            testId: test.Id,
-            testName: test.name,
-            result: "",
-            unit: this.getTestUnit(test),
-            normalRange: test.normalRange,
-            flag: "Normal"
-          })) || []
+          tests: order.tests?.map(test => {
+            const testCatalog = this.tests.find(t => t.Id === test.Id);
+            return {
+              testId: test.Id,
+              testName: test.name,
+              parameters: testCatalog?.parameters?.map(param => ({
+                name: param.name,
+                result: "",
+                unit: param.unit,
+                normalRange: param.normalRange,
+                criticalLow: param.criticalLow,
+                criticalHigh: param.criticalHigh,
+                flag: "Normal"
+              })) || [],
+              overallFlag: "Normal"
+            };
+          }) || []
         };
       }
     }
-    
+
     return results;
+  }
+
+  // Quality Control Methods
+  async getQcSamples() {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    return [...this.qcSamples];
+  }
+
+  async getCalibrationSchedule() {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    return [...this.calibrationSchedule];
+  }
+
+  async getCalibrationReminders() {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    const now = new Date();
+    const reminderThreshold = 24 * 60 * 60 * 1000; // 24 hours
+
+    return this.calibrationSchedule.filter(cal => {
+      const dueDate = new Date(cal.nextDue);
+      const timeDiff = dueDate - now;
+      return timeDiff <= reminderThreshold && timeDiff > -24 * 60 * 60 * 1000;
+    }).map(cal => ({
+      ...cal,
+      urgency: cal.status === 'Overdue' ? 'Critical' : 
+               cal.status === 'Due Soon' ? 'High' : 'Medium',
+      hoursUntilDue: Math.ceil((new Date(cal.nextDue) - now) / (1000 * 60 * 60))
+    }));
+  }
+
+  async performCalibration(calibrationId, results) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    const calibration = this.calibrationSchedule.find(c => c.Id === calibrationId);
+    if (calibration) {
+      const now = new Date();
+      calibration.lastCalibration = now.toISOString();
+      
+      // Calculate next due date based on frequency
+      const nextDue = new Date(now);
+      switch (calibration.frequency) {
+        case 'Daily':
+          nextDue.setDate(nextDue.getDate() + 1);
+          break;
+        case 'Weekly':
+          nextDue.setDate(nextDue.getDate() + 7);
+          break;
+        case 'Bi-weekly':
+          nextDue.setDate(nextDue.getDate() + 14);
+          break;
+        case 'Monthly':
+          nextDue.setMonth(nextDue.getMonth() + 1);
+          break;
+      }
+      
+      calibration.nextDue = nextDue.toISOString();
+      calibration.status = 'Current';
+      calibration.lastResults = results;
+    }
+    
+    return calibration;
+  }
+
+  validateResultFlag(result, parameter) {
+    if (!result || result === "") return "Pending";
+    
+    const numResult = parseFloat(result);
+    if (isNaN(numResult)) return "Normal";
+    
+    // Check critical values first
+    if (parameter.criticalLow !== null && numResult <= parameter.criticalLow) return "Critical Low";
+    if (parameter.criticalHigh !== null && numResult >= parameter.criticalHigh) return "Critical High";
+    
+    // Parse normal range
+    const range = parameter.normalRange;
+    if (range.includes("-")) {
+      const [low, high] = range.split("-").map(v => parseFloat(v.trim()));
+      if (!isNaN(low) && !isNaN(high)) {
+        if (numResult < low) return "Low";
+        if (numResult > high) return "High";
+      }
+    } else if (range.startsWith("<")) {
+      const threshold = parseFloat(range.substring(1));
+      if (!isNaN(threshold) && numResult >= threshold) return "High";
+    } else if (range.startsWith(">")) {
+      const threshold = parseFloat(range.substring(1));
+      if (!isNaN(threshold) && numResult <= threshold) return "Low";
+    }
+    
+    return "Normal";
+  }
+
+  async updateBatchResults(specimenIds, resultsData) {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Update results with proper flagging
+    for (const specimenId in resultsData) {
+      const specimenResults = resultsData[specimenId];
+      for (const test of specimenResults.tests) {
+        for (const param of test.parameters) {
+          param.flag = this.validateResultFlag(param.result, param);
+        }
+        // Set overall test flag based on worst parameter flag
+        const flags = test.parameters.map(p => p.flag);
+        if (flags.includes("Critical High") || flags.includes("Critical Low")) {
+          test.overallFlag = "Critical";
+        } else if (flags.includes("High") || flags.includes("Low")) {
+          test.overallFlag = "Abnormal";
+        } else {
+          test.overallFlag = "Normal";
+        }
+      }
+    }
+    
+return resultsData;
   }
 
   getTestUnit(test) {
@@ -736,12 +998,10 @@ async createOrder(orderData) {
     
     return unitMap[test.code] || "units";
   }
-
-  calculateActualProcessingTime(order) {
+calculateActualProcessingTime(order) {
     if (!order.processingStarted || !order.processingCompleted) {
       return null;
     }
-    
     const startTime = new Date(order.processingStarted);
     const endTime = new Date(order.processingCompleted);
     const diffMinutes = Math.ceil((endTime - startTime) / (1000 * 60));
