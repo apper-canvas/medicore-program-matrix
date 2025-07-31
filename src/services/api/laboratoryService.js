@@ -343,9 +343,8 @@ const calibrationSchedule = [
     lastCalibration: "2024-01-14T16:00:00",
     nextDue: "2024-01-28T16:00:00",
     frequency: "Bi-weekly",
-    status: "Current",
+status: "Current",
     calibrationType: "Internal Standard"
-calibrationType: "Internal Standard"
   }
 ];
 
@@ -576,9 +575,9 @@ async createOrder(orderData) {
       "Incorrect container",
       "Unlabeled specimen",
       "Patient identification mismatch",
-      "Specimen leaked/broken",
+"Specimen leaked/broken",
       "Expired collection container",
-"Temperature excursion",
+      "Temperature excursion",
       "Contaminated specimen"
     ];
   }
@@ -711,8 +710,8 @@ async createOrder(orderData) {
       "09:00 - 10:00",
       "10:00 - 11:00",
       "11:00 - 12:00",
-      "14:00 - 15:00",
-"15:00 - 16:00",
+"14:00 - 15:00",
+      "15:00 - 16:00",
       "16:00 - 17:00"
     ];
   }
@@ -721,9 +720,9 @@ async createOrder(orderData) {
       { status: "Pending", description: "Awaiting sample collection", color: "warning" },
       { status: "Collected", description: "Sample collected, needs transport", color: "collected" },
       { status: "Received", description: "Received in laboratory", color: "info" },
-      { status: "Processing", description: "Currently being analyzed", color: "processing" },
+{ status: "Processing", description: "Currently being analyzed", color: "processing" },
       { status: "Completed", description: "Results available", color: "success" },
-{ status: "Rejected", description: "Specimen rejected", color: "rejected" }
+      { status: "Rejected", description: "Specimen rejected", color: "rejected" }
     ];
   }
 
@@ -977,9 +976,9 @@ async getBatchResults(specimenIds) {
           test.overallFlag = "Normal";
         }
       }
-    }
+}
     
-return resultsData;
+    return resultsData;
   }
 
   getTestUnit(test) {

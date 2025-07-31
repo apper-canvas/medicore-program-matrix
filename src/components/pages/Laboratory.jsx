@@ -67,13 +67,21 @@ const tabs = [
     "Expired collection container"
   ]
 
-  const categories = ["All", "Blood", "Urine", "Imaging", "Specialized"]
+const categories = ["All", "Blood", "Urine", "Imaging", "Specialized"]
 
   useEffect(() => {
     loadData()
   }, [])
 
-const loadData = async () => {
+  useEffect(() => {
+    if (activeTab === "processing") {
+      loadProcessingQueue()
+    } else if (activeTab === "quality-control") {
+      loadQualityControl()
+    }
+}, [activeTab])
+
+  const loadData = async () => {
     try {
       setLoading(true)
       const [ordersData, specimensData, patientsData] = await Promise.all([
@@ -412,14 +420,7 @@ const handleSaveBatchResults = async () => {
     const matchesStatus = selectedStatus === "All" || order.collectionStatus === selectedStatus
     return matchesSearch && matchesStatus
   })
-  if (loading) return <Loading />
-useEffect(() => {
-    if (activeTab === "processing") {
-      loadProcessingQueue()
-    } else if (activeTab === "quality-control") {
-      loadQualityControl()
-    }
-  }, [activeTab])
+if (loading) return <Loading />
 
   if (error) return <Error message={error} onRetry={loadData} />
   return (
@@ -430,10 +431,10 @@ useEffect(() => {
             <div className="flex items-center gap-3">
                 <ApperIcon name="AlertTriangle" size={20} className="text-yellow-600" />
                 <div>
-                    <h3 className="font-semibold text-yellow-800">Calibration Reminders</h3>
+<h3 className="font-semibold text-yellow-800">Calibration Reminders</h3>
                     <p className="text-sm text-yellow-700">
-                        {calibrationReminders.length}calibration(s) due within 24 hours
-                                        </p>
+                        {calibrationReminders.length} calibration(s) due within 24 hours
+                    </p>
                 </div>
             </div>
             <Button
@@ -523,10 +524,10 @@ useEffect(() => {
                                             <td className="px-6 py-4 text-sm text-gray-900">
                                                 <div>
                                                     <div className="font-medium">
-                                                        {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
+{patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
                                                     </div>
-                                                    <div className="text-gray-500">DOB: {patient?.dateOfBirth || "N/A"}| 
-                                                                                          ID: {patient?.patientId || "N/A"}
+                                                    <div className="text-gray-500">DOB: {patient?.dateOfBirth || "N/A"} | 
+                                                          ID: {patient?.patientId || "N/A"}
                                                     </div>
                                                 </div>
                                             </td>
@@ -649,11 +650,11 @@ useEffect(() => {
                                 className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                                 <div>
                                     <div className="font-medium">Order #{order.Id}- {patient ? `${patient.firstName} ${patient.lastName}` : "Unknown"}
+<div className="text-sm text-gray-600">
+                                        {order.tests?.length || 0} tests ordered
                                     </div>
-                                    <div className="text-sm text-gray-600">
-                                        {order.tests?.length || 0}tests ordered
-                                                              </div>
                                 </div>
+                                <Badge variant={getStatusColor(order.collectionStatus)}>
                                 <Badge variant={getStatusColor(order.collectionStatus)}>
                                     {order.collectionStatus}
                                 </Badge>
@@ -934,9 +935,9 @@ useEffect(() => {
         {showBatchResults && <div
             className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div
-                className="bg-white rounded-lg p-6 w-full max-w-6xl max-h-[90vh] overflow-auto">
+className="bg-white rounded-lg p-6 w-full max-w-6xl max-h-[90vh] overflow-auto">
                 <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-xl font-semibold">Result Entry - {selectedSpecimens.length}Specimens</h3>
+                    <h3 className="text-xl font-semibold">Result Entry - {selectedSpecimens.length} Specimens</h3>
                     <Button variant="ghost" onClick={() => setShowBatchResults(false)}>
                         <ApperIcon name="X" size={16} />
                     </Button>
