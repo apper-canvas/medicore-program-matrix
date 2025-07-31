@@ -121,15 +121,20 @@ class AppointmentService {
     return await this.getByDate(today);
   }
 
-  async create(appointmentData) {
+async create(appointmentData) {
     await new Promise(resolve => setTimeout(resolve, 400));
+    
+    // Check for conflicts before creating
+    const conflicts = await this.validateAppointmentSlot(appointmentData);
     
     const maxId = Math.max(...this.appointments.map(a => a.Id), 0);
     const newAppointment = {
       ...appointmentData,
       Id: maxId + 1,
       status: "scheduled",
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      hasConflicts: conflicts.length > 0,
+      conflicts: conflicts
     };
     
     this.appointments.push(newAppointment);
@@ -199,8 +204,87 @@ class AppointmentService {
     return await this.update(id, updateData);
   }
 
-  async cancel(id, reason = "") {
+async cancel(id, reason = "") {
     return await this.updateStatus(id, "cancelled", reason);
+  }
+
+  // Conflict detection methods
+  async checkDoctorConflicts(doctorId, date, time, duration = 30, excludeId = null) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    const conflicts = this.appointments.filter(apt => {
+      if (excludeId && apt.Id === excludeId) return false;
+      if (apt.doctorId !== parseInt(doctorId)) return false;
+      if (apt.date !== date) return false;
+      if (apt.status === 'cancelled') return false;
+      
+      // Parse times and check for overlap
+      const appointmentStart = this.parseTime(apt.time);
+      const appointmentEnd = appointmentStart + (apt.duration || 30);
+      const newStart = this.parseTime(time);
+      const newEnd = newStart + duration;
+      
+      return (newStart < appointmentEnd && newEnd > appointmentStart);
+    });
+    
+    return conflicts.map(apt => ({ ...apt }));
+  }
+
+  async checkPatientConflicts(patientId, date, time, duration = 30, excludeId = null) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    const conflicts = this.appointments.filter(apt => {
+      if (excludeId && apt.Id === excludeId) return false;
+      if (apt.patientId !== parseInt(patientId)) return false;
+      if (apt.date !== date) return false;
+      if (apt.status === 'cancelled') return false;
+      
+      // Parse times and check for overlap
+      const appointmentStart = this.parseTime(apt.time);
+      const appointmentEnd = appointmentStart + (apt.duration || 30);
+      const newStart = this.parseTime(time);
+      const newEnd = newStart + duration;
+      
+      return (newStart < appointmentEnd && newEnd > appointmentStart);
+    });
+    
+    return conflicts.map(apt => ({ ...apt }));
+  }
+
+  async validateAppointmentSlot(appointmentData, excludeId = null) {
+    const { doctorId, patientId, date, time, duration = 30 } = appointmentData;
+    const conflicts = [];
+    
+    // Check doctor conflicts
+    const doctorConflicts = await this.checkDoctorConflicts(doctorId, date, time, duration, excludeId);
+    conflicts.push(...doctorConflicts.map(apt => ({
+      ...apt,
+      conflictType: 'doctor',
+      conflictMessage: `Dr. ${apt.doctorName} has another appointment with ${apt.patientName}`
+    })));
+    
+    // Check patient conflicts
+    const patientConflicts = await this.checkPatientConflicts(patientId, date, time, duration, excludeId);
+    conflicts.push(...patientConflicts.map(apt => ({
+      ...apt,
+      conflictType: 'patient',
+      conflictMessage: `${apt.patientName} has another appointment with Dr. ${apt.doctorName}`
+    })));
+    
+    return conflicts;
+  }
+
+  // Helper method to parse time string to minutes
+  parseTime(timeStr) {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
+  }
+
+  // Format minutes back to time string
+  formatTime(minutes) {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
   }
 }
 

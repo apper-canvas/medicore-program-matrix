@@ -12,12 +12,14 @@ import departmentService from "@/services/api/departmentService";
 import appointmentService from "@/services/api/appointmentService";
 
 const AppointmentBookingModal = ({ isOpen, onClose, onSuccess, selectedDate = null }) => {
-  const [loading, setLoading] = useState(false);
+const [loading, setLoading] = useState(false);
   const [patients, setPatients] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [availableSlots, setAvailableSlots] = useState([]);
   const [patientSearch, setPatientSearch] = useState("");
+  const [conflicts, setConflicts] = useState([]);
+  const [showConflictWarning, setShowConflictWarning] = useState(false);
   const [formData, setFormData] = useState({
     patientId: "",
     patientName: "",
@@ -28,11 +30,12 @@ const AppointmentBookingModal = ({ isOpen, onClose, onSuccess, selectedDate = nu
     date: selectedDate || new Date().toISOString().split('T')[0],
     time: "",
     type: "Consultation",
+    duration: 30,
     notes: ""
   });
   const [errors, setErrors] = useState({});
 
-  useEffect(() => {
+useEffect(() => {
     if (isOpen) {
       loadData();
       if (selectedDate) {
@@ -46,6 +49,22 @@ const AppointmentBookingModal = ({ isOpen, onClose, onSuccess, selectedDate = nu
       loadAvailableSlots();
     }
   }, [formData.doctorId, formData.date]);
+
+  useEffect(() => {
+    if (formData.patientId && formData.doctorId && formData.date && formData.time) {
+      checkForConflicts();
+    }
+  }, [formData.patientId, formData.doctorId, formData.date, formData.time]);
+
+  const checkForConflicts = async () => {
+    try {
+      const conflictData = await appointmentService.validateAppointmentSlot(formData);
+      setConflicts(conflictData);
+      setShowConflictWarning(conflictData.length > 0);
+    } catch (error) {
+      console.error("Error checking conflicts:", error);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -112,7 +131,7 @@ const AppointmentBookingModal = ({ isOpen, onClose, onSuccess, selectedDate = nu
     }));
   };
 
-  const validateForm = () => {
+const validateForm = () => {
     const newErrors = {};
     if (!formData.patientId) newErrors.patient = "Patient is required";
     if (!formData.doctorId) newErrors.doctor = "Doctor is required";
@@ -128,10 +147,22 @@ const AppointmentBookingModal = ({ isOpen, onClose, onSuccess, selectedDate = nu
     e.preventDefault();
     if (!validateForm()) return;
 
+    // Show confirmation if conflicts exist
+    if (conflicts.length > 0) {
+      const confirmMessage = `This appointment has ${conflicts.length} conflict(s). Do you want to proceed anyway?`;
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       await appointmentService.create(formData);
-      toast.success("Appointment scheduled successfully");
+      if (conflicts.length > 0) {
+        toast.warning("Appointment scheduled with conflicts - please review");
+      } else {
+        toast.success("Appointment scheduled successfully");
+      }
       onSuccess();
       onClose();
       resetForm();
@@ -255,7 +286,7 @@ const AppointmentBookingModal = ({ isOpen, onClose, onSuccess, selectedDate = nu
           </FormField>
 
           {/* Available Time Slots */}
-          {availableSlots.length > 0 && (
+{availableSlots.length > 0 && (
             <div>
               <Label required>Available Time Slots</Label>
               <div className="grid grid-cols-4 gap-2 mt-2">
@@ -278,6 +309,33 @@ const AppointmentBookingModal = ({ isOpen, onClose, onSuccess, selectedDate = nu
                 ))}
               </div>
               {errors.time && <p className="text-red-500 text-sm mt-1">{errors.time}</p>}
+            </div>
+          )}
+
+          {/* Conflict Warning */}
+          {showConflictWarning && conflicts.length > 0 && (
+            <div className="bg-orange-50 border border-orange-200 rounded-md p-4">
+              <div className="flex items-start space-x-2">
+                <ApperIcon name="AlertTriangle" size={20} className="text-orange-500 mt-0.5" />
+                <div className="flex-1">
+                  <h4 className="font-medium text-orange-800 mb-2">
+                    Scheduling Conflicts Detected
+                  </h4>
+                  <div className="space-y-2">
+                    {conflicts.map((conflict, index) => (
+                      <div key={index} className="text-sm text-orange-700 bg-orange-100 p-2 rounded">
+                        <div className="font-medium">{conflict.conflictMessage}</div>
+                        <div className="text-xs mt-1">
+                          {conflict.conflictType === 'doctor' ? 'Doctor' : 'Patient'} conflict at {conflict.time} on {conflict.date}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-sm text-orange-600 mt-2">
+                    You can still proceed, but please confirm this is intentional.
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 

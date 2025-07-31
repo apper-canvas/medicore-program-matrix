@@ -208,14 +208,23 @@ switch (status) {
                     }`}>
                       {format(day, 'd')}
                     </div>
-                    <div className="space-y-1 mt-1">
+<div className="space-y-1 mt-1">
                       {dayAppointments.slice(0, 2).map(apt => (
                         <div
                           key={apt.Id}
-                          className="w-full h-4 rounded text-xs text-white px-1 truncate"
+                          className={`w-full h-4 rounded text-xs text-white px-1 truncate relative ${
+                            apt.hasConflicts ? 'ring-2 ring-orange-400' : ''
+                          }`}
                           style={{ backgroundColor: getDepartmentColor(apt.departmentId) }}
-                          title={`${apt.patientName} - ${apt.doctorName}`}
+                          title={`${apt.patientName} - ${apt.doctorName}${apt.hasConflicts ? ' (Has Conflicts)' : ''}`}
                         >
+                          {apt.hasConflicts && (
+                            <ApperIcon 
+                              name="AlertTriangle" 
+                              size={8} 
+                              className="absolute -top-1 -right-1 text-orange-500 bg-white rounded-full"
+                            />
+                          )}
                           {apt.time}
                         </div>
                       ))}
