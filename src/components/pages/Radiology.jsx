@@ -9,13 +9,20 @@ import Button from "@/components/atoms/Button";
 import Card from "@/components/atoms/Card";
 
 const Radiology = () => {
-  const [activeTab, setActiveTab] = useState("order");
+  const [activeTab, setActiveTab] = useState("queue");
   const [showOrderForm, setShowOrderForm] = useState(false);
   const [orders, setOrders] = useState([]);
   const [patients, setPatients] = useState([]);
+  const [equipment, setEquipment] = useState([]);
+  const [preparationProtocols, setPreparationProtocols] = useState([]);
+  const [workflowItems, setWorkflowItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [formStep, setFormStep] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedEquipment, setSelectedEquipment] = useState("");
+  const [showPrepModal, setShowPrepModal] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState(null);
   
   // Form data
   const [formData, setFormData] = useState({
@@ -30,6 +37,7 @@ const Radiology = () => {
     priority: "routine",
     scheduledDate: "",
     scheduledTime: "",
+    equipmentId: "",
     orderingPhysician: "Dr. Sarah Johnson"
   });
 
@@ -39,15 +47,21 @@ const Radiology = () => {
     loadData();
   }, []);
 
-  const loadData = async () => {
+const loadData = async () => {
     try {
       setLoading(true);
-      const [ordersData, patientsData] = await Promise.all([
+      const [ordersData, patientsData, equipmentData, protocolsData, workflowData] = await Promise.all([
         radiologyService.getAll(),
-        patientService.getAll()
+        patientService.getAll(),
+        radiologyService.getEquipment(),
+        radiologyService.getPreparationProtocols(),
+        radiologyService.getWorkflowItems()
       ]);
       setOrders(ordersData);
       setPatients(patientsData);
+      setEquipment(equipmentData);
+      setPreparationProtocols(protocolsData);
+      setWorkflowItems(workflowData);
     } catch (error) {
       toast.error("Failed to load data");
     } finally {
@@ -173,20 +187,73 @@ const Radiology = () => {
     );
   }
 
+const updateWorkflowStatus = async (orderId, status) => {
+    try {
+      await radiologyService.updateStatus(orderId, status);
+      toast.success(`Status updated to ${status}`);
+      loadData();
+    } catch (error) {
+      toast.error("Failed to update status");
+    }
+  };
+
+  const completePreparation = async (orderId, completedItems) => {
+    try {
+      await radiologyService.updatePreparation(orderId, completedItems);
+      toast.success("Preparation checklist updated");
+      setShowPrepModal(false);
+      loadData();
+    } catch (error) {
+      toast.error("Failed to update preparation");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Radiology Management</h1>
-          <p className="text-gray-600 mt-1">Manage imaging orders, studies, and reports</p>
+          <h1 className="text-3xl font-bold text-gray-900">PACS Imaging Management</h1>
+          <p className="text-gray-600 mt-1">Comprehensive radiology workflow and equipment management</p>
         </div>
-        <Button
-          onClick={() => setShowOrderForm(true)}
-          className="bg-primary-500 hover:bg-primary-600 text-white"
-        >
-          <ApperIcon name="Plus" size={16} className="mr-2" />
-          New Order
-        </Button>
+        <div className="flex space-x-3">
+          <Button
+            onClick={() => setShowOrderForm(true)}
+            className="bg-primary-500 hover:bg-primary-600 text-white"
+          >
+            <ApperIcon name="Plus" size={16} className="mr-2" />
+            New Order
+          </Button>
+        </div>
+      </div>
+
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          {[
+            { id: "queue", label: "Order Queue", icon: "List", count: orders.filter(o => o.status === "pending").length },
+            { id: "scheduling", label: "Modality Scheduling", icon: "Calendar", count: equipment.length },
+            { id: "workflow", label: "Technologist Workflow", icon: "Activity", count: workflowItems.length },
+            { id: "orders", label: "All Orders", icon: "FileText", count: orders.length }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
+                activeTab === tab.id
+                  ? "border-primary-500 text-primary-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              }`}
+            >
+              <ApperIcon name={tab.icon} size={16} />
+              <span>{tab.label}</span>
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                activeTab === tab.id ? "bg-primary-100 text-primary-800" : "bg-gray-100 text-gray-800"
+              }`}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </nav>
       </div>
 
       {/* Order Form Modal */}
@@ -492,96 +559,472 @@ const Radiology = () => {
         </div>
       )}
 
-      {/* Orders List */}
-      <Card>
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold text-gray-900">Recent Orders</h2>
-            <div className="text-sm text-gray-500">
-              {orders.length} order{orders.length !== 1 ? 's' : ''}
+{/* Order Queue Tab */}
+      {activeTab === "queue" && (
+        <Card>
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-gray-900">Radiology Order Queue</h2>
+              <div className="text-sm text-gray-500">
+                {orders.filter(o => o.status === "pending").length} pending examination{orders.filter(o => o.status === "pending").length !== 1 ? 's' : ''}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {orders.filter(o => o.status === "pending").map((order) => {
+                const patient = patients.find(p => p.Id === order.patientId);
+                const protocol = preparationProtocols.find(p => p.examType === order.examType);
+                return (
+                  <div key={order.Id} className="border border-gray-200 rounded-lg p-4 hover:border-primary-300 transition-colors">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h3 className="font-medium text-gray-900">
+                          {patient?.firstName} {patient?.lastName}
+                        </h3>
+                        <p className="text-sm text-gray-500">ID: {patient?.patientId || patient?.Id}</p>
+                      </div>
+                      <div className="text-right">
+                        {getPriorityBadge(order.priority)}
+                        <p className="text-sm text-gray-500 mt-1">{order.scheduledDate} at {order.scheduledTime}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">Examination</p>
+                        <p className="text-sm text-gray-900">{order.examType}</p>
+                        <p className="text-sm text-gray-500">{order.clinicalIndication}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">Contrast</p>
+                        <p className="text-sm text-gray-900">
+                          {order.contrastRequired ? `Yes - ${order.contrastAgent}` : "No contrast required"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">Equipment</p>
+                        <p className="text-sm text-gray-900">
+                          {equipment.find(e => e.Id === order.equipmentId)?.name || "Not assigned"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {protocol && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                        <h4 className="text-sm font-medium text-blue-900 mb-2">Patient Preparation Requirements</h4>
+                        <div className="space-y-1">
+                          {protocol.requirements.map((req, index) => (
+                            <div key={index} className="flex items-center text-sm text-blue-800">
+                              <ApperIcon name="CheckCircle2" size={14} className="mr-2 text-blue-600" />
+                              {req}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between items-center">
+                      <div className="flex space-x-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedOrder(order);
+                            setShowPrepModal(true);
+                          }}
+                        >
+                          <ApperIcon name="ClipboardCheck" size={14} className="mr-1" />
+                          Prep Checklist
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => updateWorkflowStatus(order.Id, "in-progress")}
+                          className="bg-green-500 hover:bg-green-600 text-white"
+                        >
+                          <ApperIcon name="Play" size={14} className="mr-1" />
+                          Start Exam
+                        </Button>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        Ordered by {order.orderingPhysician}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
+        </Card>
+      )}
 
-          {orders.length === 0 ? (
-            <div className="text-center py-12">
-              <ApperIcon name="ScanLine" size={48} className="mx-auto text-gray-400 mb-4" />
-              <p className="text-gray-500">No radiology orders found</p>
-              <Button
-                onClick={() => setShowOrderForm(true)}
-                className="mt-4 bg-primary-500 hover:bg-primary-600 text-white"
-              >
-                Create First Order
-              </Button>
+      {/* Modality Scheduling Tab */}
+      {activeTab === "scheduling" && (
+        <Card>
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-gray-900">Modality Scheduling</h2>
+              <div className="flex items-center space-x-3">
+                <Input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="w-auto"
+                />
+                <FormField
+                  type="select"
+                  value={selectedEquipment}
+                  onChange={(e) => setSelectedEquipment(e.target.value)}
+                  options={[
+                    { value: "", label: "All Equipment" },
+                    ...equipment.map(e => ({ value: e.Id, label: e.name }))
+                  ]}
+                  className="w-auto"
+                />
+              </div>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Patient
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Exam Type
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Scheduled
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Priority
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Contrast
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {orders.map((order) => {
-                    const patient = patients.find(p => p.Id === order.patientId);
-                    return (
-                      <tr key={order.Id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
-                            {patient?.firstName} {patient?.lastName}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              {equipment
+                .filter(e => !selectedEquipment || e.Id === parseInt(selectedEquipment))
+                .map((equip) => {
+                  const todaySchedule = orders.filter(o => 
+                    o.scheduledDate === selectedDate && 
+                    o.equipmentId === equip.Id
+                  );
+                  
+                  return (
+                    <div key={equip.Id} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h3 className="font-medium text-gray-900">{equip.name}</h3>
+                          <p className="text-sm text-gray-500">{equip.location}</p>
+                        </div>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          equip.status === "available" ? "bg-green-100 text-green-800" : 
+                          equip.status === "maintenance" ? "bg-red-100 text-red-800" : 
+                          "bg-yellow-100 text-yellow-800"
+                        }`}>
+                          {equip.status}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 mb-4">
+                        <div className="text-sm">
+                          <span className="text-gray-600">Capacity:</span>
+                          <span className="ml-2 font-medium">{todaySchedule.length}/{equip.dailyCapacity} exams</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-primary-500 h-2 rounded-full"
+                            style={{ width: `${(todaySchedule.length / equip.dailyCapacity) * 100}%` }}
+                          ></div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium text-gray-700">Today's Schedule</h4>
+                        {todaySchedule.length === 0 ? (
+                          <p className="text-sm text-gray-500">No examinations scheduled</p>
+                        ) : (
+                          <div className="space-y-1 max-h-32 overflow-y-auto">
+                            {todaySchedule.map((order) => {
+                              const patient = patients.find(p => p.Id === order.patientId);
+                              return (
+                                <div key={order.Id} className="text-xs bg-gray-50 rounded p-2">
+                                  <div className="flex justify-between">
+                                    <span>{order.scheduledTime}</span>
+                                    <span className="font-medium">{order.examType}</span>
+                                  </div>
+                                  <div className="text-gray-600">
+                                    {patient?.firstName} {patient?.lastName}
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                          <div className="text-sm text-gray-500">
-                            ID: {patient?.patientId || patient?.Id}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{order.examType}</div>
-                          <div className="text-sm text-gray-500">{order.clinicalIndication}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{order.scheduledDate}</div>
-                          <div className="text-sm text-gray-500">{order.scheduledTime}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {getPriorityBadge(order.priority)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {getStatusBadge(order.status)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {order.contrastRequired ? "Yes" : "No"}
-                          </div>
-                          {order.contrastRequired && (
-                            <div className="text-sm text-gray-500">{order.contrastAgent}</div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
-          )}
+          </div>
+        </Card>
+      )}
+
+      {/* Technologist Workflow Tab */}
+      {activeTab === "workflow" && (
+        <Card>
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-gray-900">Technologist Workflow</h2>
+              <div className="text-sm text-gray-500">
+                {workflowItems.length} active examination{workflowItems.length !== 1 ? 's' : ''}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+              {workflowItems.map((item) => {
+                const patient = patients.find(p => p.Id === item.patientId);
+                const order = orders.find(o => o.Id === item.orderId);
+                return (
+                  <div key={item.Id} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h3 className="font-medium text-gray-900">
+                          {patient?.firstName} {patient?.lastName}
+                        </h3>
+                        <p className="text-sm text-gray-500">{order?.examType}</p>
+                      </div>
+                      {getStatusBadge(item.status)}
+                    </div>
+
+                    <div className="space-y-2 mb-4">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Started:</span>
+                        <span>{item.startTime}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Est. Duration:</span>
+                        <span>{item.estimatedDuration} min</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Progress:</span>
+                        <span>{item.progress}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-blue-500 h-2 rounded-full transition-all"
+                          style={{ width: `${item.progress}%` }}
+                        ></div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      {item.status === "in-progress" && (
+                        <div className="flex space-x-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => updateWorkflowStatus(item.orderId, "paused")}
+                          >
+                            <ApperIcon name="Pause" size={14} className="mr-1" />
+                            Pause
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => updateWorkflowStatus(item.orderId, "completed")}
+                            className="bg-green-500 hover:bg-green-600 text-white"
+                          >
+                            <ApperIcon name="Check" size={14} className="mr-1" />
+                            Complete
+                          </Button>
+                        </div>
+                      )}
+                      
+                      {item.status === "paused" && (
+                        <Button
+                          size="sm"
+                          onClick={() => updateWorkflowStatus(item.orderId, "in-progress")}
+                          className="bg-blue-500 hover:bg-blue-600 text-white w-full"
+                        >
+                          <ApperIcon name="Play" size={14} className="mr-1" />
+                          Resume
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* All Orders Tab */}
+      {activeTab === "orders" && (
+        <Card>
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-gray-900">All Orders</h2>
+              <div className="text-sm text-gray-500">
+                {orders.length} order{orders.length !== 1 ? 's' : ''}
+              </div>
+            </div>
+
+            {orders.length === 0 ? (
+              <div className="text-center py-12">
+                <ApperIcon name="ScanLine" size={48} className="mx-auto text-gray-400 mb-4" />
+                <p className="text-gray-500">No radiology orders found</p>
+                <Button
+                  onClick={() => setShowOrderForm(true)}
+                  className="mt-4 bg-primary-500 hover:bg-primary-600 text-white"
+                >
+                  Create First Order
+                </Button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Patient
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Exam Type
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Scheduled
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Priority
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Equipment
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {orders.map((order) => {
+                      const patient = patients.find(p => p.Id === order.patientId);
+                      const equip = equipment.find(e => e.Id === order.equipmentId);
+                      return (
+                        <tr key={order.Id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">
+                              {patient?.firstName} {patient?.lastName}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              ID: {patient?.patientId || patient?.Id}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">{order.examType}</div>
+                            <div className="text-sm text-gray-500">{order.clinicalIndication}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">{order.scheduledDate}</div>
+                            <div className="text-sm text-gray-500">{order.scheduledTime}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {getPriorityBadge(order.priority)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {getStatusBadge(order.status)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">
+                              {equip?.name || "Not assigned"}
+                            </div>
+                            {equip && (
+                              <div className="text-sm text-gray-500">{equip.location}</div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* Patient Preparation Modal */}
+      {showPrepModal && selectedOrder && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold">Patient Preparation Checklist</h2>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowPrepModal(false)}
+                >
+                  <ApperIcon name="X" size={16} />
+                </Button>
+              </div>
+              <p className="text-gray-600 mt-1">
+                {patients.find(p => p.Id === selectedOrder.patientId)?.firstName} {patients.find(p => p.Id === selectedOrder.patientId)?.lastName} - {selectedOrder.examType}
+              </p>
+            </div>
+
+            <div className="p-6">
+              {preparationProtocols.find(p => p.examType === selectedOrder.examType) ? (
+                <div className="space-y-4">
+                  {preparationProtocols.find(p => p.examType === selectedOrder.examType).requirements.map((req, index) => (
+                    <div key={index} className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg">
+                      <input
+                        type="checkbox"
+                        id={`prep-${index}`}
+                        className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor={`prep-${index}`} className="text-sm text-gray-900 flex-1">
+                        {req}
+                      </label>
+                    </div>
+                  ))}
+                  
+                  {selectedOrder.contrastRequired && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <h4 className="font-medium text-yellow-900 mb-2">Contrast Administration Protocol</h4>
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-3">
+                          <input
+                            type="checkbox"
+                            id="contrast-consent"
+                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                          />
+                          <label className="text-sm text-yellow-800">Patient consent obtained</label>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <input
+                            type="checkbox"
+                            id="contrast-allergy"
+                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                          />
+                          <label className="text-sm text-yellow-800">Allergy history verified</label>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <input
+                            type="checkbox"
+                            id="contrast-kidney"
+                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                          />
+                          <label className="text-sm text-yellow-800">Kidney function assessed</label>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-gray-500">No specific preparation requirements</p>
+              )}
+
+              <div className="flex justify-end space-x-3 mt-6">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowPrepModal(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => completePreparation(selectedOrder.Id, [])}
+                  className="bg-primary-500 hover:bg-primary-600 text-white"
+                >
+                  Complete Preparation
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
-      </Card>
+      )}
     </div>
   );
 };
