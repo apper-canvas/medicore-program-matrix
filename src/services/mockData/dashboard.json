@@ -1,0 +1,74 @@
+[
+  {
+    "Id": 1,
+    "label": "Total Patients",
+    "value": 1247,
+    "unit": "",
+    "trend": "up",
+    "icon": "Users",
+    "color": "primary"
+  },
+  {
+    "Id": 2,
+    "label": "Bed Occupancy",
+    "value": 85,
+    "unit": "%",
+    "trend": "stable",
+    "icon": "Bed",
+    "color": "success"
+  },
+  {
+    "Id": 3,
+    "label": "Today's Appointments",
+    "value": 42,
+    "unit": "",
+    "trend": "up",
+    "icon": "Calendar",
+    "color": "info"
+  },
+  {
+    "Id": 4,
+    "label": "Emergency Cases",
+    "value": 8,
+    "unit": "",
+    "trend": "down",
+    "icon": "AlertTriangle",
+    "color": "warning"
+  },
+  {
+    "Id": 5,
+    "label": "Pending Lab Results",
+    "value": 23,
+    "unit": "",
+    "trend": "stable",
+    "icon": "TestTube",
+    "color": "primary"
+  },
+  {
+    "Id": 6,
+    "label": "Active Surgeries",
+    "value": 3,
+    "unit": "",
+    "trend": "stable",
+    "icon": "Scissors",
+    "color": "error"
+  },
+  {
+    "Id": 7,
+    "label": "Monthly Revenue",
+    "value": 245000,
+    "unit": "$",
+    "trend": "up",
+    "icon": "DollarSign",
+    "color": "success"
+  },
+  {
+    "Id": 8,
+    "label": "Staff On Duty",
+    "value": 156,
+    "unit": "",
+    "trend": "stable",
+    "icon": "UserCheck",
+    "color": "info"
+  }
+]

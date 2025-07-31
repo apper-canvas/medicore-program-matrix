@@ -1,0 +1,137 @@
+[
+  {
+    "Id": 1,
+    "firstName": "Sarah",
+    "lastName": "Johnson",
+    "dateOfBirth": "1985-03-15",
+    "gender": "Female",
+    "phone": "(555) 123-4567",
+    "email": "sarah.johnson@email.com",
+    "address": {
+      "street": "123 Main Street",
+      "city": "New York",
+      "state": "NY",
+      "zipCode": "10001"
+    },
+    "insuranceProvider": "Blue Cross Blue Shield",
+    "policyNumber": "BC12345678",
+    "coverageType": "Family",
+    "emergencyContact": {
+      "name": "John Johnson",
+      "relationship": "Spouse",
+      "phone": "(555) 123-4568"
+    },
+    "medicalAlerts": ["Penicillin allergy", "Diabetes Type 2"],
+    "lastVisit": "2024-01-15T10:30:00Z",
+    "status": "Active",
+    "registeredDate": "2023-06-10T14:20:00Z"
+  },
+  {
+    "Id": 2,
+    "firstName": "Michael",
+    "lastName": "Chen",
+    "dateOfBirth": "1972-08-22",
+    "gender": "Male",
+    "phone": "(555) 234-5678",
+    "email": "michael.chen@email.com",
+    "address": {
+      "street": "456 Oak Avenue",
+      "city": "Los Angeles",
+      "state": "CA",
+      "zipCode": "90210"
+    },
+    "insuranceProvider": "Aetna",
+    "policyNumber": "AET987654321",
+    "coverageType": "Individual",
+    "emergencyContact": {
+      "name": "Lisa Chen",
+      "relationship": "Wife",
+      "phone": "(555) 234-5679"
+    },
+    "medicalAlerts": ["Hypertension"],
+    "lastVisit": "2024-01-20T14:15:00Z",
+    "status": "Active",
+    "registeredDate": "2023-05-15T09:30:00Z"
+  },
+  {
+    "Id": 3,
+    "firstName": "Emily",
+    "lastName": "Rodriguez",
+    "dateOfBirth": "1990-12-05",
+    "gender": "Female",
+    "phone": "(555) 345-6789",
+    "email": "emily.rodriguez@email.com",
+    "address": {
+      "street": "789 Pine Street",
+      "city": "Chicago",
+      "state": "IL",
+      "zipCode": "60601"
+    },
+    "insuranceProvider": "Cigna",
+    "policyNumber": "CIG456789123",
+    "coverageType": "Individual",
+    "emergencyContact": {
+      "name": "Maria Rodriguez",
+      "relationship": "Mother",
+      "phone": "(555) 345-6788"
+    },
+    "medicalAlerts": [],
+    "lastVisit": "2024-01-18T16:45:00Z",
+    "status": "Active",
+    "registeredDate": "2023-07-22T11:15:00Z"
+  },
+  {
+    "Id": 4,
+    "firstName": "Robert",
+    "lastName": "Williams",
+    "dateOfBirth": "1965-06-30",
+    "gender": "Male",
+    "phone": "(555) 456-7890",
+    "email": "robert.williams@email.com",
+    "address": {
+      "street": "321 Elm Drive",
+      "city": "Houston",
+      "state": "TX",
+      "zipCode": "77001"
+    },
+    "insuranceProvider": "United Healthcare",
+    "policyNumber": "UHC789123456",
+    "coverageType": "Family",
+    "emergencyContact": {
+      "name": "Patricia Williams",
+      "relationship": "Spouse",
+      "phone": "(555) 456-7891"
+    },
+    "medicalAlerts": ["Heart condition", "Blood thinner medication"],
+    "lastVisit": "2024-01-10T08:30:00Z",
+    "status": "Critical",
+    "registeredDate": "2023-04-08T13:45:00Z"
+  },
+  {
+    "Id": 5,
+    "firstName": "Amanda",
+    "lastName": "Davis",
+    "dateOfBirth": "1988-11-12",
+    "gender": "Female",
+    "phone": "(555) 567-8901",
+    "email": "amanda.davis@email.com",
+    "address": {
+      "street": "654 Maple Lane",
+      "city": "Phoenix",
+      "state": "AZ",
+      "zipCode": "85001"
+    },
+    "insuranceProvider": "Kaiser Permanente",
+    "policyNumber": "KP123456789",
+    "coverageType": "Individual",
+    "emergencyContact": {
+      "name": "David Davis",
+      "relationship": "Brother",
+      "phone": "(555) 567-8902"
+    },
+    "medicalAlerts": ["Asthma"],
+    "lastVisit": "2023-12-22T13:20:00Z",
+    "status": "Discharged",
+    "registeredDate": "2023-08-18T10:00:00Z"
+  }
+]
